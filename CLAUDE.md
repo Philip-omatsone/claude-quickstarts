@@ -4,6 +4,60 @@
 
 - When changes are made to files that have a copyright notice add them to that subdirectory's CHANGELOG.md file.
 
+## Agents
+
+### Setup & Development
+
+- **Install dependencies**: `pip install anthropic mcp`
+- **Run demo notebook**: `jupyter notebook agent_demo.ipynb`
+- **Run tests**: `python test_message_params.py`
+
+### Code Style
+
+- **Python**: snake_case for functions/variables, PascalCase for classes
+- **Types**: Add type annotations for all parameters and returns
+- **Classes**: Use abstract base classes for tool definitions
+
+## Browser-Use Demo
+
+### Setup & Development
+
+- **Install dependencies**: `pip install -e ".[dev,test]"`
+- **Run with Docker**: `docker-compose up --build`
+- **Run with file watching**: `docker-compose up --build --watch`
+- **Validate environment**: `python validate_env.py`
+
+### Testing & Code Quality
+
+- **Lint**: `ruff check .`
+- **Typecheck**: `pyright`
+- **Run tests**: `pytest`
+- **Run single test**: `pytest tests/path_to_test.py::test_name -v`
+- **Test markers**: `integration`, `slow`, `asyncio`
+
+### Code Style
+
+- **Python**: snake_case for functions/variables, PascalCase for classes
+- **Imports**: Use isort with combine-as-imports
+- **Types**: Add type annotations for all parameters and returns
+- **Minimum Python**: 3.11
+
+## Autonomous Coding
+
+### Setup & Development
+
+- **Install dependencies**: `pip install -r requirements.txt`
+- **Run agent**: `python autonomous_agent_demo.py --project-dir ./my_project`
+- **Run with iteration limit**: `python autonomous_agent_demo.py --project-dir ./my_project --max-iterations 3`
+- **Run with specific model**: `python autonomous_agent_demo.py --project-dir ./my_project --model MODEL_NAME`
+- **Run security tests**: `python test_security.py`
+
+### Code Style
+
+- **Python**: snake_case for functions/variables, PascalCase for classes
+- **Security**: Defense-in-depth with bash command allowlists and filesystem restrictions
+- **Types**: Add type annotations for all parameters and returns
+
 ## Computer-Use Demo
 
 ### Setup & Development
