@@ -114,3 +114,19 @@
 - **Components**: Function components with type annotations
 - **Visualization**: Use Recharts library for data visualization
 - **State management**: React hooks for state
+
+## Net Worth Tracker
+
+### Setup & Development
+
+- **Install dependencies**: `npm install`
+- **Run dev server**: `npm run dev`
+- **Lint**: `npm run lint`
+- **Build**: `npm run build`
+
+### Code Style
+
+- **TypeScript**: Strict mode with proper type definitions
+- **Components**: Function components with React hooks
+- **Visualization**: Use Recharts library for charts
+- **State management**: React hooks with localStorage persistence
