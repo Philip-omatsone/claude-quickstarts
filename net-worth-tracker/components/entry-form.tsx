@@ -10,7 +10,7 @@ import {
   getCurrentMonth,
   formatCurrency,
 } from "@/lib/utils";
-import { X, Plus, Trash2 } from "lucide-react";
+import { X, Plus, Trash2, Info } from "lucide-react";
 
 interface EntryFormProps {
   snapshots: MonthlySnapshot[];
@@ -18,6 +18,9 @@ interface EntryFormProps {
   onSave: (snapshot: MonthlySnapshot) => void;
   onClose: () => void;
 }
+
+// Categories managed by dedicated tabs (excluded from manual entry)
+const AUTO_CATEGORIES = new Set(["property", "mortgage", "pension", "equity_exposure"]);
 
 function CategorySection({
   category,
@@ -121,11 +124,8 @@ function getPlaceholder(category: Category): string {
     stocks_shares_isa: "Vanguard S&S ISA",
     lifetime_isa: "Moneybox LISA",
     gia: "Trading 212 GIA",
-    pension: "Workplace Pension",
-    property: "Home",
     crypto: "Bitcoin",
     other_asset: "Valuables",
-    mortgage: "Home Mortgage",
     student_loan: "Plan 2 Student Loan",
     credit_card: "Amex",
     debt: "Car Finance",
@@ -133,6 +133,14 @@ function getPlaceholder(category: Category): string {
   };
   return placeholders[category] || "Name";
 }
+
+// Filter to only show categories NOT managed by dedicated tabs
+const MANUAL_ASSET_CATEGORIES = ASSET_CATEGORIES.filter(
+  (c) => !AUTO_CATEGORIES.has(c.key),
+);
+const MANUAL_LIABILITY_CATEGORIES = LIABILITY_CATEGORIES.filter(
+  (c) => !AUTO_CATEGORIES.has(c.key),
+);
 
 export default function EntryForm({
   snapshots,
@@ -147,22 +155,28 @@ export default function EntryForm({
     if (editingMonth) {
       const existing = snapshots.find((s) => s.month === editingMonth);
       if (existing) {
-        setItems(existing.items.map((item) => ({ ...item })));
+        // Only load items from non-auto categories (manual items)
+        const manualItems = existing.items
+          .filter((item) => !AUTO_CATEGORIES.has(item.category))
+          .map((item) => ({ ...item }));
+        setItems(manualItems);
         return;
       }
     }
 
-    // Pre-fill from most recent snapshot so users only need to update amounts
+    // Pre-fill from most recent snapshot (manual items only)
     const sorted = [...snapshots].sort((a, b) =>
       a.month.localeCompare(b.month),
     );
     const latest = sorted[sorted.length - 1];
     if (latest) {
       setItems(
-        latest.items.map((item) => ({
-          ...item,
-          id: generateId(),
-        })),
+        latest.items
+          .filter((item) => !AUTO_CATEGORIES.has(item.category))
+          .map((item) => ({
+            ...item,
+            id: generateId(),
+          })),
       );
     }
   }, [editingMonth, snapshots]);
@@ -228,7 +242,7 @@ export default function EntryForm({
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
             <h2 className="text-lg font-semibold text-slate-900">
-              {editingMonth ? "Edit Snapshot" : "New Monthly Snapshot"}
+              {editingMonth ? "Edit Manual Adjustments" : "Monthly Adjustment"}
             </h2>
             <button
               onClick={onClose}
@@ -240,6 +254,16 @@ export default function EntryForm({
 
           <form onSubmit={handleSubmit}>
             <div className="px-6 py-5 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto">
+              {/* Info banner */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2">
+                <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-blue-700">
+                  Property, mortgage, pension, and equity exposure values are managed in
+                  their dedicated tabs and will be included automatically. Use this form
+                  for cash accounts, ISAs, investments, crypto, and other items.
+                </div>
+              </div>
+
               {/* Month picker */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -254,7 +278,7 @@ export default function EntryForm({
                 />
               </div>
 
-              {/* Assets */}
+              {/* Assets (manual categories only) */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-emerald-700 uppercase tracking-wide">
@@ -267,7 +291,7 @@ export default function EntryForm({
                   )}
                 </div>
                 <div className="space-y-3">
-                  {ASSET_CATEGORIES.map((cat) => (
+                  {MANUAL_ASSET_CATEGORIES.map((cat) => (
                     <CategorySection
                       key={cat.key}
                       category={cat.key}
@@ -282,7 +306,7 @@ export default function EntryForm({
                 </div>
               </div>
 
-              {/* Liabilities */}
+              {/* Liabilities (manual categories only) */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-red-600 uppercase tracking-wide">
@@ -295,7 +319,7 @@ export default function EntryForm({
                   )}
                 </div>
                 <div className="space-y-3">
-                  {LIABILITY_CATEGORIES.map((cat) => (
+                  {MANUAL_LIABILITY_CATEGORIES.map((cat) => (
                     <CategorySection
                       key={cat.key}
                       category={cat.key}
@@ -311,15 +335,23 @@ export default function EntryForm({
               </div>
 
               {/* Running totals */}
-              <div className="bg-slate-100 rounded-lg p-4 flex items-center justify-between">
-                <span className="text-sm font-medium text-slate-600">
-                  Net Worth
-                </span>
-                <span
-                  className={`text-lg font-semibold ${assetTotal - liabilityTotal >= 0 ? "text-blue-600" : "text-red-500"}`}
-                >
-                  {formatCurrency(assetTotal - liabilityTotal)}
-                </span>
+              <div className="bg-slate-100 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-slate-400">Manual items only</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-600">
+                    Net (manual)
+                  </span>
+                  <span
+                    className={`text-lg font-semibold ${assetTotal - liabilityTotal >= 0 ? "text-blue-600" : "text-red-500"}`}
+                  >
+                    {formatCurrency(assetTotal - liabilityTotal)}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-400 mt-1">
+                  Property, pensions &amp; equity values will be added from their tabs
+                </div>
               </div>
             </div>
 
@@ -336,7 +368,7 @@ export default function EntryForm({
                 type="submit"
                 className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
-                Save Snapshot
+                Save Adjustment
               </button>
             </div>
           </form>

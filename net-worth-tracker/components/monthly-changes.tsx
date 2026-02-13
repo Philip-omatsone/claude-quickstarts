@@ -7,6 +7,7 @@ import {
   totalAssets,
   totalLiabilities,
   netWorth,
+  totalEquityExposure,
 } from "@/lib/utils";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -43,6 +44,9 @@ export default function MonthlyChanges({
               Net Worth
             </th>
             <th className="text-right py-3 px-2 text-slate-500 font-medium">
+              Equity Exp.
+            </th>
+            <th className="text-right py-3 px-2 text-slate-500 font-medium">
               Change
             </th>
             <th className="w-20"></th>
@@ -58,6 +62,7 @@ export default function MonthlyChanges({
               prevNw !== null && prevNw !== 0
                 ? ((nw - prevNw) / Math.abs(prevNw)) * 100
                 : null;
+            const equity = totalEquityExposure(snapshot);
 
             return (
               <tr
@@ -75,6 +80,9 @@ export default function MonthlyChanges({
                 </td>
                 <td className="py-3 px-2 text-right font-semibold text-slate-900">
                   {formatCurrency(nw)}
+                </td>
+                <td className="py-3 px-2 text-right text-indigo-600">
+                  {equity > 0 ? formatCurrency(equity) : <span className="text-slate-300">&mdash;</span>}
                 </td>
                 <td className="py-3 px-2 text-right">
                   {change !== null ? (

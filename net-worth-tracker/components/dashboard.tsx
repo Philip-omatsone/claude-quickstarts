@@ -2,16 +2,20 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { MonthlySnapshot, LineItem } from "@/lib/types";
-import { loadSnapshots, addSnapshot, deleteSnapshot, saveSnapshots } from "@/lib/storage";
+import { loadSnapshots, addSnapshot, deleteSnapshot, saveSnapshots, loadProperties, loadPensions, loadEquityExposure } from "@/lib/storage";
 import {
   formatCurrency,
   formatMonth,
   totalAssets,
   totalLiabilities,
   netWorth,
+  totalEquityExposure,
   buildChartData,
   getCurrentMonth,
   generateId,
+  propertyToLineItems,
+  pensionToLineItems,
+  equityExposureToLineItems,
 } from "@/lib/utils";
 import NetWorthChart from "./net-worth-chart";
 import CompositionChart from "./composition-chart";
@@ -19,6 +23,9 @@ import MonthlyChanges from "./monthly-changes";
 import EntryForm from "./entry-form";
 import ExcelUpload from "./excel-upload";
 import ApiSettings from "./api-settings";
+import PropertyTab from "./property-tab";
+import PensionTab from "./pension-tab";
+import EquityExposureTab from "./equity-exposure-tab";
 import {
   Plus,
   TrendingUp,
@@ -27,7 +34,20 @@ import {
   PiggyBank,
   FileSpreadsheet,
   Plug,
+  Home,
+  Landmark,
+  BarChart3,
+  LayoutDashboard,
 } from "lucide-react";
+
+type TabId = "overview" | "property" | "pensions" | "equity";
+
+const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  { id: "overview", label: "Overview", icon: <LayoutDashboard className="w-4 h-4" /> },
+  { id: "property", label: "Property", icon: <Home className="w-4 h-4" /> },
+  { id: "pensions", label: "Pensions", icon: <Landmark className="w-4 h-4" /> },
+  { id: "equity", label: "Equity Exposure", icon: <BarChart3 className="w-4 h-4" /> },
+];
 
 function SummaryCard({
   label,
@@ -78,6 +98,7 @@ export default function Dashboard() {
   const [showImport, setShowImport] = useState(false);
   const [showApiSettings, setShowApiSettings] = useState(false);
   const [editingMonth, setEditingMonth] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -94,6 +115,7 @@ export default function Dashboard() {
   const currentAssets = latest ? totalAssets(latest) : 0;
   const currentLiabilities = latest ? totalLiabilities(latest) : 0;
   const currentNetWorth = latest ? netWorth(latest) : 0;
+  const currentEquityExposure = latest ? totalEquityExposure(latest) : 0;
   const previousNetWorth = previous ? netWorth(previous) : null;
   const momChange =
     previousNetWorth !== null ? currentNetWorth - previousNetWorth : null;
@@ -103,12 +125,42 @@ export default function Dashboard() {
         100
       : null;
 
+  // Build a snapshot dynamically from property, pension, equity data + manual items
+  const buildDynamicSnapshot = useCallback((month: string, manualItems: LineItem[]): MonthlySnapshot => {
+    const properties = loadProperties();
+    const pensions = loadPensions();
+    const equityExposure = loadEquityExposure();
+
+    // Categories that are auto-populated from dedicated tabs
+    const autoCategories = new Set(["property", "mortgage", "pension", "equity_exposure"]);
+
+    // Keep only manual items that aren't in auto-populated categories
+    const filteredManualItems = manualItems.filter(
+      (item) => !autoCategories.has(item.category),
+    );
+
+    // Build auto items from tab data
+    const propertyItems = propertyToLineItems(properties);
+    const pensionItems = pensionToLineItems(pensions);
+    const equityItems = equityExposureToLineItems(equityExposure);
+
+    return {
+      id: generateId(),
+      month,
+      items: [...filteredManualItems, ...propertyItems, ...pensionItems, ...equityItems],
+    };
+  }, []);
+
   const handleSave = useCallback((snapshot: MonthlySnapshot) => {
-    const updated = addSnapshot(snapshot);
+    // When saving from the entry form, build a dynamic snapshot that combines
+    // manual adjustments with auto-populated data from tabs
+    const dynamicSnapshot = buildDynamicSnapshot(snapshot.month, snapshot.items);
+    dynamicSnapshot.id = snapshot.id;
+    const updated = addSnapshot(dynamicSnapshot);
     setSnapshots(updated);
     setShowForm(false);
     setEditingMonth(null);
-  }, []);
+  }, [buildDynamicSnapshot]);
 
   const handleDelete = useCallback((month: string) => {
     const updated = deleteSnapshot(month);
@@ -132,7 +184,6 @@ export default function Dashboard() {
 
   const handleImport = useCallback((imported: MonthlySnapshot[]) => {
     const existing = loadSnapshots();
-    // Merge: imported snapshots replace existing ones for the same month
     const merged = [...existing];
     for (const snap of imported) {
       const idx = merged.findIndex((s) => s.month === snap.month);
@@ -149,14 +200,12 @@ export default function Dashboard() {
 
   const handleApiSync = useCallback(
     (_provider: string, items: LineItem[]) => {
-      // Merge API items into the current month's snapshot
       const month = getCurrentMonth();
       const existing = loadSnapshots();
       const current = existing.find((s) => s.month === month);
 
       let updatedItems: LineItem[];
       if (current) {
-        // Remove old items from this provider, keep manual ones
         const manualItems = current.items.filter(
           (item) => !item.source || item.source === "manual" || item.source !== _provider,
         );
@@ -176,6 +225,21 @@ export default function Dashboard() {
     },
     [],
   );
+
+  // When tab data changes (property/pension/equity), refresh current month snapshot
+  const handleTabDataChange = useCallback(() => {
+    const month = getCurrentMonth();
+    const existing = loadSnapshots();
+    const current = existing.find((s) => s.month === month);
+
+    // Get current manual items (non-auto categories)
+    const manualItems = current?.items || [];
+    const dynamicSnapshot = buildDynamicSnapshot(month, manualItems);
+    dynamicSnapshot.id = current?.id || generateId();
+
+    const updated = addSnapshot(dynamicSnapshot);
+    setSnapshots(updated);
+  }, [buildDynamicSnapshot]);
 
   if (!loaded) return null;
 
@@ -214,134 +278,188 @@ export default function Dashboard() {
             <button
               onClick={handleAdd}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              title="Record manual adjustments for cash, ISAs, crypto etc. Property, pensions and equity are managed in their tabs."
             >
               <Plus className="w-4 h-4" />
-              Add Month
+              Adjust Month
             </button>
           </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <nav className="flex gap-1 -mb-px">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </nav>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {!hasData ? (
-          <div className="text-center py-20">
-            <PiggyBank className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <h2 className="text-lg font-medium text-slate-900 mb-2">
-              No data yet
-            </h2>
-            <p className="text-slate-500 mb-6 max-w-md mx-auto">
-              Add your first monthly snapshot, import from an Excel spreadsheet,
-              or connect your accounts via API.
-            </p>
-            <div className="flex items-center justify-center gap-3 flex-wrap">
-              <button
-                onClick={handleAdd}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                Add First Month
-              </button>
-              <button
-                onClick={() => setShowImport(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                Import Excel
-              </button>
-              <button
-                onClick={() => setShowApiSettings(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
-              >
-                <Plug className="w-4 h-4" />
-                Connect APIs
-              </button>
-            </div>
-          </div>
-        ) : (
+        {/* Overview Tab */}
+        {activeTab === "overview" && (
           <>
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <SummaryCard
-                label="Total Assets"
-                value={formatCurrency(currentAssets)}
-                icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
-                color="emerald"
-              />
-              <SummaryCard
-                label="Total Liabilities"
-                value={formatCurrency(currentLiabilities)}
-                icon={<TrendingDown className="w-5 h-5 text-red-500" />}
-                color="red"
-              />
-              <SummaryCard
-                label="Net Worth"
-                value={formatCurrency(currentNetWorth)}
-                icon={<Wallet className="w-5 h-5 text-blue-600" />}
-                color="blue"
-                highlight
-              />
-              <SummaryCard
-                label="Month-on-Month"
-                value={
-                  momChange !== null
-                    ? `${momChange >= 0 ? "+" : ""}${formatCurrency(momChange)}`
-                    : "\u2014"
-                }
-                subtitle={
-                  momPercent !== null
-                    ? `${momPercent >= 0 ? "+" : ""}${momPercent.toFixed(1)}%`
-                    : undefined
-                }
-                icon={
-                  momChange !== null ? (
-                    momChange >= 0 ? (
-                      <TrendingUp className="w-5 h-5 text-emerald-600" />
-                    ) : (
-                      <TrendingDown className="w-5 h-5 text-red-500" />
-                    )
-                  ) : (
-                    <TrendingUp className="w-5 h-5 text-slate-400" />
-                  )
-                }
-                color={
-                  momChange !== null
-                    ? momChange >= 0
-                      ? "emerald"
-                      : "red"
-                    : "slate"
-                }
-              />
-            </div>
-
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-              <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-6">
-                <h2 className="text-sm font-medium text-slate-500 mb-4">
-                  Net Worth Over Time
+            {!hasData ? (
+              <div className="text-center py-20">
+                <PiggyBank className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                <h2 className="text-lg font-medium text-slate-900 mb-2">
+                  No data yet
                 </h2>
-                <NetWorthChart data={chartData} />
+                <p className="text-slate-500 mb-6 max-w-md mx-auto">
+                  Start by adding your property, pensions, and equity exposure in
+                  their respective tabs. Then record a snapshot or import from Excel.
+                </p>
+                <div className="flex items-center justify-center gap-3 flex-wrap">
+                  <button
+                    onClick={() => setActiveTab("property")}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm font-medium"
+                  >
+                    <Home className="w-4 h-4" />
+                    Add Property
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("pensions")}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                  >
+                    <Landmark className="w-4 h-4" />
+                    Add Pensions
+                  </button>
+                  <button
+                    onClick={handleAdd}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Record Snapshot
+                  </button>
+                  <button
+                    onClick={() => setShowImport(true)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Import Excel
+                  </button>
+                </div>
               </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-6">
-                <h2 className="text-sm font-medium text-slate-500 mb-4">
-                  Asset Composition &mdash;{" "}
-                  {latest ? formatMonth(latest.month) : ""}
-                </h2>
-                <CompositionChart snapshot={latest} />
-              </div>
-            </div>
+            ) : (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                  <SummaryCard
+                    label="Total Assets"
+                    value={formatCurrency(currentAssets)}
+                    icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
+                    color="emerald"
+                  />
+                  <SummaryCard
+                    label="Total Liabilities"
+                    value={formatCurrency(currentLiabilities)}
+                    icon={<TrendingDown className="w-5 h-5 text-red-500" />}
+                    color="red"
+                  />
+                  <SummaryCard
+                    label="Net Worth"
+                    value={formatCurrency(currentNetWorth)}
+                    icon={<Wallet className="w-5 h-5 text-blue-600" />}
+                    color="blue"
+                    highlight
+                  />
+                  <SummaryCard
+                    label="Equity Exposure"
+                    value={formatCurrency(currentEquityExposure)}
+                    icon={<BarChart3 className="w-5 h-5 text-indigo-600" />}
+                    color="slate"
+                  />
+                  <SummaryCard
+                    label="Month-on-Month"
+                    value={
+                      momChange !== null
+                        ? `${momChange >= 0 ? "+" : ""}${formatCurrency(momChange)}`
+                        : "\u2014"
+                    }
+                    subtitle={
+                      momPercent !== null
+                        ? `${momPercent >= 0 ? "+" : ""}${momPercent.toFixed(1)}%`
+                        : undefined
+                    }
+                    icon={
+                      momChange !== null ? (
+                        momChange >= 0 ? (
+                          <TrendingUp className="w-5 h-5 text-emerald-600" />
+                        ) : (
+                          <TrendingDown className="w-5 h-5 text-red-500" />
+                        )
+                      ) : (
+                        <TrendingUp className="w-5 h-5 text-slate-400" />
+                      )
+                    }
+                    color={
+                      momChange !== null
+                        ? momChange >= 0
+                          ? "emerald"
+                          : "red"
+                        : "slate"
+                    }
+                  />
+                </div>
 
-            {/* History Table */}
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <h2 className="text-sm font-medium text-slate-500 mb-4">
-                Monthly History
-              </h2>
-              <MonthlyChanges
-                snapshots={sorted}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
-            </div>
+                {/* Charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                  <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-6">
+                    <h2 className="text-sm font-medium text-slate-500 mb-4">
+                      Net Worth Over Time
+                    </h2>
+                    <NetWorthChart data={chartData} />
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-6">
+                    <h2 className="text-sm font-medium text-slate-500 mb-4">
+                      Asset Composition &mdash;{" "}
+                      {latest ? formatMonth(latest.month) : ""}
+                    </h2>
+                    <CompositionChart snapshot={latest} />
+                  </div>
+                </div>
+
+                {/* History Table */}
+                <div className="bg-white rounded-xl border border-slate-200 p-6">
+                  <h2 className="text-sm font-medium text-slate-500 mb-4">
+                    Monthly History
+                  </h2>
+                  <MonthlyChanges
+                    snapshots={sorted}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
+                </div>
+              </>
+            )}
           </>
+        )}
+
+        {/* Property Tab */}
+        {activeTab === "property" && (
+          <PropertyTab onDataChange={handleTabDataChange} />
+        )}
+
+        {/* Pensions Tab */}
+        {activeTab === "pensions" && (
+          <PensionTab onDataChange={handleTabDataChange} />
+        )}
+
+        {/* Equity Exposure Tab */}
+        {activeTab === "equity" && (
+          <EquityExposureTab onDataChange={handleTabDataChange} />
         )}
       </main>
 

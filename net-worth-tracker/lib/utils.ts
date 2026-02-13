@@ -5,6 +5,9 @@ import {
   ChartDataPoint,
   CompositionSlice,
   LineItem,
+  PropertyData,
+  PensionEntry,
+  EquityExposureEntry,
 } from "./types";
 
 export const CATEGORIES: CategoryInfo[] = [
@@ -17,6 +20,7 @@ export const CATEGORIES: CategoryInfo[] = [
   { key: "pension", label: "Pension", type: "asset", color: "#8b5cf6", group: "Pension" },
   { key: "property", label: "Property", type: "asset", color: "#f59e0b", group: "Property" },
   { key: "crypto", label: "Crypto", type: "asset", color: "#f97316", group: "Crypto" },
+  { key: "equity_exposure", label: "Equity Exposure", type: "asset", color: "#6366f1", group: "Equity Exposure" },
   { key: "other_asset", label: "Other Assets", type: "asset", color: "#6b7280", group: "Other" },
   { key: "mortgage", label: "Mortgage", type: "liability", color: "#ef4444", group: "Mortgage" },
   { key: "student_loan", label: "Student Loan", type: "liability", color: "#dc2626", group: "Loans" },
@@ -79,6 +83,12 @@ export function netWorth(snapshot: MonthlySnapshot): number {
   return totalAssets(snapshot) - totalLiabilities(snapshot);
 }
 
+export function totalEquityExposure(snapshot: MonthlySnapshot): number {
+  return snapshot.items
+    .filter((item) => item.category === "equity_exposure")
+    .reduce((sum, item) => sum + item.amount, 0);
+}
+
 export function buildChartData(snapshots: MonthlySnapshot[]): ChartDataPoint[] {
   const sorted = [...snapshots].sort((a, b) => a.month.localeCompare(b.month));
   return sorted.map((s) => ({
@@ -87,6 +97,7 @@ export function buildChartData(snapshots: MonthlySnapshot[]): ChartDataPoint[] {
     assets: totalAssets(s),
     liabilities: totalLiabilities(s),
     netWorth: netWorth(s),
+    equityExposure: totalEquityExposure(s),
   }));
 }
 
@@ -120,4 +131,60 @@ export function categoryTotal(items: LineItem[], category: Category): number {
 
 export function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+// Build line items from property data (for snapshot generation)
+export function propertyToLineItems(properties: PropertyData[]): LineItem[] {
+  const items: LineItem[] = [];
+  for (const prop of properties) {
+    if (prop.estimatedValue > 0) {
+      items.push({
+        id: generateId(),
+        name: prop.name || "Property",
+        category: "property",
+        type: "asset",
+        amount: prop.estimatedValue,
+        source: prop.valuationSource === "rightmove" ? "rightmove" : "manual",
+      });
+    }
+    if (prop.mortgageBalance > 0) {
+      items.push({
+        id: generateId(),
+        name: `${prop.name || "Property"} Mortgage`,
+        category: "mortgage",
+        type: "liability",
+        amount: prop.mortgageBalance,
+        source: "manual",
+      });
+    }
+  }
+  return items;
+}
+
+// Build line items from pension data
+export function pensionToLineItems(pensions: PensionEntry[]): LineItem[] {
+  return pensions
+    .filter((p) => p.currentValue > 0)
+    .map((p) => ({
+      id: generateId(),
+      name: p.name,
+      category: "pension" as Category,
+      type: "asset" as const,
+      amount: p.currentValue,
+      source: p.provider === "manual" ? "manual" as const : p.provider,
+    }));
+}
+
+// Build line items from equity exposure data
+export function equityExposureToLineItems(entries: EquityExposureEntry[]): LineItem[] {
+  return entries
+    .filter((e) => e.equityValue > 0)
+    .map((e) => ({
+      id: generateId(),
+      name: e.name,
+      category: "equity_exposure" as Category,
+      type: "asset" as const,
+      amount: e.equityValue,
+      source: e.provider === "manual" ? "manual" as const : e.provider,
+    }));
 }
