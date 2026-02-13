@@ -8,14 +8,20 @@ import {
 } from "./types";
 
 export const CATEGORIES: CategoryInfo[] = [
-  { key: "cash", label: "Cash Accounts", type: "asset", color: "#3b82f6", group: "Liquid" },
-  { key: "isa", label: "ISAs", type: "asset", color: "#06b6d4", group: "Liquid" },
-  { key: "investment", label: "Investments", type: "asset", color: "#10b981", group: "Liquid" },
+  { key: "current_account", label: "Current Accounts", type: "asset", color: "#3b82f6", group: "Cash" },
+  { key: "savings_account", label: "Savings Accounts", type: "asset", color: "#0ea5e9", group: "Cash" },
+  { key: "cash_isa", label: "Cash ISA", type: "asset", color: "#06b6d4", group: "ISAs" },
+  { key: "stocks_shares_isa", label: "Stocks & Shares ISA", type: "asset", color: "#14b8a6", group: "ISAs" },
+  { key: "lifetime_isa", label: "Lifetime ISA", type: "asset", color: "#0d9488", group: "ISAs" },
+  { key: "gia", label: "General Investment", type: "asset", color: "#10b981", group: "Investments" },
   { key: "pension", label: "Pension", type: "asset", color: "#8b5cf6", group: "Pension" },
   { key: "property", label: "Property", type: "asset", color: "#f59e0b", group: "Property" },
+  { key: "crypto", label: "Crypto", type: "asset", color: "#f97316", group: "Crypto" },
   { key: "other_asset", label: "Other Assets", type: "asset", color: "#6b7280", group: "Other" },
   { key: "mortgage", label: "Mortgage", type: "liability", color: "#ef4444", group: "Mortgage" },
-  { key: "debt", label: "Debts", type: "liability", color: "#f97316", group: "Debts" },
+  { key: "student_loan", label: "Student Loan", type: "liability", color: "#dc2626", group: "Loans" },
+  { key: "credit_card", label: "Credit Cards", type: "liability", color: "#e11d48", group: "Debts" },
+  { key: "debt", label: "Other Debts", type: "liability", color: "#f97316", group: "Debts" },
   { key: "other_liability", label: "Other Liabilities", type: "liability", color: "#78716c", group: "Other" },
 ];
 

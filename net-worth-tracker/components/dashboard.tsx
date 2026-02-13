@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { MonthlySnapshot } from "@/lib/types";
-import { loadSnapshots, addSnapshot, deleteSnapshot } from "@/lib/storage";
+import { MonthlySnapshot, LineItem } from "@/lib/types";
+import { loadSnapshots, addSnapshot, deleteSnapshot, saveSnapshots } from "@/lib/storage";
 import {
   formatCurrency,
   formatMonth,
@@ -10,17 +10,23 @@ import {
   totalLiabilities,
   netWorth,
   buildChartData,
+  getCurrentMonth,
+  generateId,
 } from "@/lib/utils";
 import NetWorthChart from "./net-worth-chart";
 import CompositionChart from "./composition-chart";
 import MonthlyChanges from "./monthly-changes";
 import EntryForm from "./entry-form";
+import ExcelUpload from "./excel-upload";
+import ApiSettings from "./api-settings";
 import {
   Plus,
   TrendingUp,
   TrendingDown,
   Wallet,
   PiggyBank,
+  FileSpreadsheet,
+  Plug,
 } from "lucide-react";
 
 function SummaryCard({
@@ -69,6 +75,8 @@ function SummaryCard({
 export default function Dashboard() {
   const [snapshots, setSnapshots] = useState<MonthlySnapshot[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [showApiSettings, setShowApiSettings] = useState(false);
   const [editingMonth, setEditingMonth] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -122,6 +130,53 @@ export default function Dashboard() {
     setEditingMonth(null);
   }, []);
 
+  const handleImport = useCallback((imported: MonthlySnapshot[]) => {
+    const existing = loadSnapshots();
+    // Merge: imported snapshots replace existing ones for the same month
+    const merged = [...existing];
+    for (const snap of imported) {
+      const idx = merged.findIndex((s) => s.month === snap.month);
+      if (idx >= 0) {
+        merged[idx] = snap;
+      } else {
+        merged.push(snap);
+      }
+    }
+    saveSnapshots(merged);
+    setSnapshots(merged);
+    setShowImport(false);
+  }, []);
+
+  const handleApiSync = useCallback(
+    (_provider: string, items: LineItem[]) => {
+      // Merge API items into the current month's snapshot
+      const month = getCurrentMonth();
+      const existing = loadSnapshots();
+      const current = existing.find((s) => s.month === month);
+
+      let updatedItems: LineItem[];
+      if (current) {
+        // Remove old items from this provider, keep manual ones
+        const manualItems = current.items.filter(
+          (item) => !item.source || item.source === "manual" || item.source !== _provider,
+        );
+        updatedItems = [...manualItems, ...items];
+      } else {
+        updatedItems = items;
+      }
+
+      const snapshot: MonthlySnapshot = {
+        id: current?.id || generateId(),
+        month,
+        items: updatedItems,
+      };
+
+      const updated = addSnapshot(snapshot);
+      setSnapshots(updated);
+    },
+    [],
+  );
+
   if (!loaded) return null;
 
   const chartData = buildChartData(snapshots);
@@ -139,13 +194,31 @@ export default function Dashboard() {
               Net Worth Tracker
             </h1>
           </div>
-          <button
-            onClick={handleAdd}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            Add Month
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowApiSettings(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+              title="API Connections"
+            >
+              <Plug className="w-4 h-4" />
+              <span className="hidden sm:inline">APIs</span>
+            </button>
+            <button
+              onClick={() => setShowImport(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+              title="Import Excel"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span className="hidden sm:inline">Import</span>
+            </button>
+            <button
+              onClick={handleAdd}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Add Month
+            </button>
+          </div>
         </div>
       </header>
 
@@ -156,16 +229,33 @@ export default function Dashboard() {
             <h2 className="text-lg font-medium text-slate-900 mb-2">
               No data yet
             </h2>
-            <p className="text-slate-500 mb-6">
-              Add your first monthly snapshot to start tracking your net worth.
+            <p className="text-slate-500 mb-6 max-w-md mx-auto">
+              Add your first monthly snapshot, import from an Excel spreadsheet,
+              or connect your accounts via API.
             </p>
-            <button
-              onClick={handleAdd}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              Add First Month
-            </button>
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              <button
+                onClick={handleAdd}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Add First Month
+              </button>
+              <button
+                onClick={() => setShowImport(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                Import Excel
+              </button>
+              <button
+                onClick={() => setShowApiSettings(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+              >
+                <Plug className="w-4 h-4" />
+                Connect APIs
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -261,6 +351,17 @@ export default function Dashboard() {
           editingMonth={editingMonth}
           onSave={handleSave}
           onClose={handleClose}
+        />
+      )}
+
+      {showImport && (
+        <ExcelUpload onImport={handleImport} onClose={() => setShowImport(false)} />
+      )}
+
+      {showApiSettings && (
+        <ApiSettings
+          onSync={handleApiSync}
+          onClose={() => setShowApiSettings(false)}
         />
       )}
     </div>

@@ -1,12 +1,21 @@
 export type AssetCategory =
-  | "cash"
-  | "isa"
+  | "current_account"
+  | "savings_account"
+  | "cash_isa"
+  | "stocks_shares_isa"
+  | "lifetime_isa"
+  | "gia"
   | "pension"
-  | "investment"
   | "property"
+  | "crypto"
   | "other_asset";
 
-export type LiabilityCategory = "mortgage" | "debt" | "other_liability";
+export type LiabilityCategory =
+  | "mortgage"
+  | "student_loan"
+  | "credit_card"
+  | "debt"
+  | "other_liability";
 
 export type Category = AssetCategory | LiabilityCategory;
 
@@ -18,6 +27,7 @@ export interface LineItem {
   category: Category;
   type: ItemType;
   amount: number;
+  source?: "manual" | "monzo" | "trading212";
 }
 
 export interface MonthlySnapshot {
@@ -46,4 +56,12 @@ export interface CompositionSlice {
   name: string;
   value: number;
   color: string;
+}
+
+export interface ApiConnection {
+  provider: "monzo" | "trading212";
+  label: string;
+  connected: boolean;
+  apiKey?: string;
+  lastSync?: string;
 }

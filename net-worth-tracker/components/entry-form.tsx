@@ -93,6 +93,11 @@ function CategorySection({
                   className="w-32 pl-7 pr-3 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-right"
                 />
               </div>
+              {item.source && item.source !== "manual" && (
+                <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                  {item.source}
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => onRemove(item.id)}
@@ -110,15 +115,21 @@ function CategorySection({
 
 function getPlaceholder(category: Category): string {
   const placeholders: Record<string, string> = {
-    cash: "Barclays Current",
-    isa: "Vanguard S&S ISA",
+    current_account: "Monzo Current",
+    savings_account: "Chase Saver",
+    cash_isa: "Cash ISA",
+    stocks_shares_isa: "Vanguard S&S ISA",
+    lifetime_isa: "Moneybox LISA",
+    gia: "Trading 212 GIA",
     pension: "Workplace Pension",
-    investment: "Trading 212 GIA",
     property: "Home",
+    crypto: "Bitcoin",
     other_asset: "Valuables",
     mortgage: "Home Mortgage",
-    debt: "Student Loan",
-    other_liability: "Car Finance",
+    student_loan: "Plan 2 Student Loan",
+    credit_card: "Amex",
+    debt: "Car Finance",
+    other_liability: "Personal Loan",
   };
   return placeholders[category] || "Name";
 }
@@ -166,6 +177,7 @@ export default function EntryForm({
         category,
         type: info.type,
         amount: 0,
+        source: "manual",
       },
     ]);
   };
