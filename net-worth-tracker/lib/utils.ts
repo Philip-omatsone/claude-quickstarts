@@ -28,8 +28,8 @@ export const CATEGORIES: CategoryInfo[] = [
 export const ASSET_CATEGORIES = CATEGORIES.filter((c) => c.type === "asset");
 export const LIABILITY_CATEGORIES = CATEGORIES.filter((c) => c.type === "liability");
 
-export function getCategoryInfo(key: Category): CategoryInfo {
-  return CATEGORIES.find((c) => c.key === key)!;
+export function getCategoryInfo(key: Category): CategoryInfo | undefined {
+  return CATEGORIES.find((c) => c.key === key);
 }
 
 export function formatCurrency(amount: number): string {
@@ -96,6 +96,7 @@ export function buildCompositionData(snapshot: MonthlySnapshot): CompositionSlic
   for (const item of snapshot.items) {
     if (item.type !== "asset") continue;
     const info = getCategoryInfo(item.category);
+    if (!info) continue;
     if (!groups[info.group]) {
       groups[info.group] = { value: 0, color: info.color };
     }

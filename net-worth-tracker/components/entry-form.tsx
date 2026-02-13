@@ -175,7 +175,7 @@ export default function EntryForm({
         id: generateId(),
         name: "",
         category,
-        type: info.type,
+        type: info?.type ?? "asset",
         amount: 0,
         source: "manual",
       },
