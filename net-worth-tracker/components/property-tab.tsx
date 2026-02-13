@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { PropertyData } from "@/lib/types";
 import { loadProperties, saveProperties } from "@/lib/storage";
-import { formatCurrency, generateId } from "@/lib/utils";
+import { formatCurrency, generateId, calculateMonthlyPayment } from "@/lib/utils";
 import { Plus, Trash2, Home, AlertTriangle, ExternalLink } from "lucide-react";
 
 interface PropertyTabProps {
@@ -261,29 +261,17 @@ export default function PropertyTab({ onDataChange }: PropertyTabProps) {
                   </div>
                 </div>
 
-                {/* Monthly Payment */}
+                {/* Monthly Payment (auto-calculated) */}
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
-                    Monthly Payment
+                    Monthly Payment (calc.)
                   </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                      &pound;
-                    </span>
-                    <input
-                      type="number"
-                      value={prop.monthlyPayment || ""}
-                      onChange={(e) =>
-                        updateProperty(prop.id, {
-                          monthlyPayment: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      placeholder="0"
-                      min="0"
-                      step="1"
-                      className="w-full pl-7 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    />
+                  <div className="px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium">
+                    {prop.mortgageBalance > 0 && prop.interestRate > 0 && (prop.mortgageTerm ?? 0) > 0
+                      ? formatCurrency(calculateMonthlyPayment(prop.mortgageBalance, prop.interestRate, prop.mortgageTerm ?? 25))
+                      : "—"}
                   </div>
+                  <p className="text-xs text-slate-400 mt-1">Based on balance, rate &amp; term</p>
                 </div>
 
                 {/* Remaining Term */}

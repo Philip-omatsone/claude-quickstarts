@@ -7,7 +7,8 @@ import {
   LineItem,
   PropertyData,
   PensionEntry,
-  EquityExposureEntry,
+  VanguardEquityEntry,
+  CashSavingsEntry,
 } from "./types";
 
 export const CATEGORIES: CategoryInfo[] = [
@@ -20,7 +21,7 @@ export const CATEGORIES: CategoryInfo[] = [
   { key: "pension", label: "Pension", type: "asset", color: "#8b5cf6", group: "Pension" },
   { key: "property", label: "Property", type: "asset", color: "#f59e0b", group: "Property" },
   { key: "crypto", label: "Crypto", type: "asset", color: "#f97316", group: "Crypto" },
-  { key: "equity_exposure", label: "Equity Exposure", type: "asset", color: "#6366f1", group: "Equity Exposure" },
+  { key: "vanguard_equity", label: "Vanguard Equity", type: "asset", color: "#6366f1", group: "Vanguard Equity" },
   { key: "other_asset", label: "Other Assets", type: "asset", color: "#6b7280", group: "Other" },
   { key: "mortgage", label: "Mortgage", type: "liability", color: "#ef4444", group: "Mortgage" },
   { key: "student_loan", label: "Student Loan", type: "liability", color: "#dc2626", group: "Loans" },
@@ -83,11 +84,14 @@ export function netWorth(snapshot: MonthlySnapshot): number {
   return totalAssets(snapshot) - totalLiabilities(snapshot);
 }
 
-export function totalEquityExposure(snapshot: MonthlySnapshot): number {
+export function totalVanguardEquity(snapshot: MonthlySnapshot): number {
   return snapshot.items
-    .filter((item) => item.category === "equity_exposure")
+    .filter((item) => item.category === "vanguard_equity")
     .reduce((sum, item) => sum + item.amount, 0);
 }
+
+// Keep old name for backwards compat
+export const totalEquityExposure = totalVanguardEquity;
 
 export function buildChartData(snapshots: MonthlySnapshot[]): ChartDataPoint[] {
   const sorted = [...snapshots].sort((a, b) => a.month.localeCompare(b.month));
@@ -97,7 +101,7 @@ export function buildChartData(snapshots: MonthlySnapshot[]): ChartDataPoint[] {
     assets: totalAssets(s),
     liabilities: totalLiabilities(s),
     netWorth: netWorth(s),
-    equityExposure: totalEquityExposure(s),
+    vanguardEquity: totalVanguardEquity(s),
   }));
 }
 
@@ -131,6 +135,23 @@ export function categoryTotal(items: LineItem[], category: Category): number {
 
 export function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+/**
+ * Calculate monthly mortgage payment using the standard amortisation formula:
+ * M = P[r(1+r)^n] / [(1+r)^n - 1]
+ * where P = balance, r = monthly rate, n = total months
+ */
+export function calculateMonthlyPayment(
+  balance: number,
+  annualRate: number,
+  termYears: number,
+): number {
+  if (balance <= 0 || annualRate <= 0 || termYears <= 0) return 0;
+  const r = annualRate / 100 / 12;
+  const n = termYears * 12;
+  const payment = (balance * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  return Math.round(payment * 100) / 100;
 }
 
 // Build line items from property data (for snapshot generation)
@@ -175,16 +196,41 @@ export function pensionToLineItems(pensions: PensionEntry[]): LineItem[] {
     }));
 }
 
-// Build line items from equity exposure data
-export function equityExposureToLineItems(entries: EquityExposureEntry[]): LineItem[] {
+// Build line items from Vanguard equity data
+export function vanguardEquityToLineItems(entries: VanguardEquityEntry[]): LineItem[] {
   return entries
     .filter((e) => e.equityValue > 0)
     .map((e) => ({
       id: generateId(),
       name: e.name,
-      category: "equity_exposure" as Category,
+      category: "vanguard_equity" as Category,
       type: "asset" as const,
       amount: e.equityValue,
       source: e.provider === "manual" ? "manual" as const : e.provider,
     }));
+}
+
+// Keep old name for backwards compat
+export const equityExposureToLineItems = vanguardEquityToLineItems;
+
+// Build line items from cash savings data
+export function cashSavingsToLineItems(entries: CashSavingsEntry[]): LineItem[] {
+  return entries
+    .filter((e) => e.balance !== 0)
+    .map((e) => ({
+      id: generateId(),
+      name: e.name,
+      category: e.accountType as Category,
+      type: e.accountType === "credit_card" ? "liability" as const : "asset" as const,
+      amount: Math.abs(e.balance),
+      source: "manual" as const,
+    }));
+}
+
+// Calculate net cash savings (assets minus credit card balances)
+export function netCashSavings(entries: CashSavingsEntry[]): number {
+  return entries.reduce((sum, e) => {
+    if (e.accountType === "credit_card") return sum - Math.abs(e.balance);
+    return sum + e.balance;
+  }, 0);
 }

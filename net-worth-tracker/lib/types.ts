@@ -8,7 +8,7 @@ export type AssetCategory =
   | "pension"
   | "property"
   | "crypto"
-  | "equity_exposure"
+  | "vanguard_equity"
   | "other_asset";
 
 export type LiabilityCategory =
@@ -65,7 +65,7 @@ export interface ChartDataPoint {
   assets: number;
   liabilities: number;
   netWorth: number;
-  equityExposure: number;
+  vanguardEquity: number;
 }
 
 export interface CompositionSlice {
@@ -82,6 +82,13 @@ export interface ApiConnection {
   lastSync?: string;
 }
 
+// Monthly value tracking for property
+export interface MonthlyPropertyValue {
+  month: string; // YYYY-MM
+  estimatedValue: number;
+  mortgageBalance: number;
+}
+
 // Property / Home Equity data
 export interface PropertyData {
   id: string;
@@ -90,12 +97,18 @@ export interface PropertyData {
   estimatedValue: number;
   mortgageBalance: number;
   interestRate: number;
-  monthlyPayment?: number;
   mortgageTerm?: number; // years remaining
   purchasePrice?: number;
   purchaseDate?: string; // YYYY-MM
-  valuationSource: "manual" | "rightmove";
+  valuationSource: "manual" | "rightmove" | "land_registry";
   lastValuationDate?: string;
+  monthlyHistory?: MonthlyPropertyValue[];
+}
+
+// Monthly value tracking for pension
+export interface MonthlyPensionValue {
+  month: string; // YYYY-MM
+  value: number;
 }
 
 // Pension data
@@ -108,15 +121,30 @@ export interface PensionEntry {
   employerContributions?: number;
   fundName?: string;
   lastUpdated?: string;
+  monthlyHistory?: MonthlyPensionValue[];
 }
 
-// Equity exposure data (e.g. Vanguard)
-export interface EquityExposureEntry {
+// Vanguard equity data (renamed from EquityExposureEntry)
+export interface VanguardEquityEntry {
   id: string;
   name: string;
-  provider: "vanguard" | "manual";
+  provider: "vanguard" | "trading212" | "manual";
   totalValue: number;
   equityPercent: number; // 0-100
   equityValue: number; // calculated: totalValue * equityPercent / 100
+  lastUpdated?: string;
+  portfolioSummary?: string; // parsed summary from portfolio report
+}
+
+// Keep backwards compat alias
+export type EquityExposureEntry = VanguardEquityEntry;
+
+// Cash Savings entry
+export interface CashSavingsEntry {
+  id: string;
+  name: string;
+  accountType: "current_account" | "savings_account" | "cash_isa" | "credit_card";
+  balance: number;
+  provider?: string;
   lastUpdated?: string;
 }

@@ -1,9 +1,10 @@
-import { MonthlySnapshot, Category, PropertyData, PensionEntry, EquityExposureEntry } from "./types";
+import { MonthlySnapshot, Category, PropertyData, PensionEntry, VanguardEquityEntry, CashSavingsEntry } from "./types";
 
 const STORAGE_KEY = "net-worth-tracker-snapshots";
 const PROPERTY_KEY = "net-worth-tracker-properties";
 const PENSION_KEY = "net-worth-tracker-pensions";
 const EQUITY_KEY = "net-worth-tracker-equity-exposure";
+const CASH_SAVINGS_KEY = "net-worth-tracker-cash-savings";
 
 // Map old category names to new ones
 const CATEGORY_MIGRATION: Record<string, Category> = {
@@ -16,6 +17,7 @@ const CATEGORY_MIGRATION: Record<string, Category> = {
   mortgage: "mortgage",
   debt: "debt",
   other_liability: "other_liability",
+  equity_exposure: "vanguard_equity",
 };
 
 function migrateSnapshots(snapshots: MonthlySnapshot[]): MonthlySnapshot[] {
@@ -74,6 +76,20 @@ export function deleteSnapshot(month: string): MonthlySnapshot[] {
   return snapshots;
 }
 
+// Remove a specific line item from a snapshot
+export function removeSnapshotItem(month: string, itemId: string): MonthlySnapshot[] {
+  const snapshots = loadSnapshots();
+  const idx = snapshots.findIndex((s) => s.month === month);
+  if (idx >= 0) {
+    snapshots[idx] = {
+      ...snapshots[idx],
+      items: snapshots[idx].items.filter((item) => item.id !== itemId),
+    };
+    saveSnapshots(snapshots);
+  }
+  return snapshots;
+}
+
 // ─── Property Data ───────────────────────────────────────────────────
 
 export function loadProperties(): PropertyData[] {
@@ -110,9 +126,9 @@ export function savePensions(pensions: PensionEntry[]): void {
   localStorage.setItem(PENSION_KEY, JSON.stringify(pensions));
 }
 
-// ─── Equity Exposure Data ────────────────────────────────────────────
+// ─── Vanguard Equity Data ───────────────────────────────────────────
 
-export function loadEquityExposure(): EquityExposureEntry[] {
+export function loadVanguardEquity(): VanguardEquityEntry[] {
   if (typeof window === "undefined") return [];
   try {
     const data = localStorage.getItem(EQUITY_KEY);
@@ -123,7 +139,29 @@ export function loadEquityExposure(): EquityExposureEntry[] {
   }
 }
 
-export function saveEquityExposure(entries: EquityExposureEntry[]): void {
+export function saveVanguardEquity(entries: VanguardEquityEntry[]): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(EQUITY_KEY, JSON.stringify(entries));
+}
+
+// Keep old names for backwards compat
+export const loadEquityExposure = loadVanguardEquity;
+export const saveEquityExposure = saveVanguardEquity;
+
+// ─── Cash Savings Data ──────────────────────────────────────────────
+
+export function loadCashSavings(): CashSavingsEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const data = localStorage.getItem(CASH_SAVINGS_KEY);
+    if (!data) return [];
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+export function saveCashSavings(entries: CashSavingsEntry[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(CASH_SAVINGS_KEY, JSON.stringify(entries));
 }

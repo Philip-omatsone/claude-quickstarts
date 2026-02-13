@@ -26,6 +26,7 @@ import ApiSettings from "./api-settings";
 import PropertyTab from "./property-tab";
 import PensionTab from "./pension-tab";
 import EquityExposureTab from "./equity-exposure-tab";
+import ProjectionDashboard from "./projections/projection-dashboard";
 import {
   Plus,
   TrendingUp,
@@ -38,15 +39,17 @@ import {
   Landmark,
   BarChart3,
   LayoutDashboard,
+  Calculator,
 } from "lucide-react";
 
-type TabId = "overview" | "property" | "pensions" | "equity";
+type TabId = "overview" | "property" | "pensions" | "equity" | "projections";
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard className="w-4 h-4" /> },
   { id: "property", label: "Property", icon: <Home className="w-4 h-4" /> },
   { id: "pensions", label: "Pensions", icon: <Landmark className="w-4 h-4" /> },
   { id: "equity", label: "Equity Exposure", icon: <BarChart3 className="w-4 h-4" /> },
+  { id: "projections", label: "Projections", icon: <Calculator className="w-4 h-4" /> },
 ];
 
 function SummaryCard({
@@ -460,6 +463,11 @@ export default function Dashboard() {
         {/* Equity Exposure Tab */}
         {activeTab === "equity" && (
           <EquityExposureTab onDataChange={handleTabDataChange} />
+        )}
+
+        {/* Projections Tab */}
+        {activeTab === "projections" && (
+          <ProjectionDashboard />
         )}
       </main>
 
