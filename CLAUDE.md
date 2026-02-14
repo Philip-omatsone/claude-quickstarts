@@ -1,132 +1,101 @@
-# Claude Quickstarts Development Guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Repository Overview
+
+Monorepo of independent quickstart projects demonstrating Claude API capabilities. Each subdirectory is a standalone project with its own dependencies, README, and setup. There is no shared build system — always `cd` into the specific project before running commands.
 
 ## Legal
 
-- When changes are made to files that have a copyright notice add them to that subdirectory's CHANGELOG.md file.
+When changes are made to files that have a copyright notice, add them to that subdirectory's CHANGELOG.md file (e.g., `browser-use-demo/CHANGELOG.md`).
 
-## Agents
+## CI/CD
 
-### Setup & Development
+GitHub Actions (`.github/workflows/`) runs tests and Docker builds for `computer-use-demo` only:
+- `tests.yaml`: ruff, pyright, pytest
+- `build.yaml`: multi-platform Docker images → `ghcr.io/anthropics/anthropic-quickstarts`
 
-- **Install dependencies**: `pip install anthropic mcp`
-- **Run demo notebook**: `jupyter notebook agent_demo.ipynb`
-- **Run tests**: `python test_message_params.py`
+Pre-commit hooks (`.pre-commit-config.yaml`) apply to `computer-use-demo/` files only: ruff lint/format + pyright.
 
-### Code Style
+## Project Commands
 
-- **Python**: snake_case for functions/variables, PascalCase for classes
-- **Types**: Add type annotations for all parameters and returns
-- **Classes**: Use abstract base classes for tool definitions
+### Python Projects
 
-## Browser-Use Demo
+All Python projects: snake_case functions/variables, PascalCase classes, type annotations on all parameters and returns.
 
-### Setup & Development
+**agents/** — Educational LLM agent implementation (<300 lines)
+```
+pip install anthropic mcp
+python test_message_params.py          # tests
+jupyter notebook agent_demo.ipynb      # demo
+```
+Tools use abstract base classes (`tools/base.py`). Supports both local tools and MCP server tools.
 
-- **Install dependencies**: `pip install -e ".[dev,test]"`
-- **Run with Docker**: `docker-compose up --build`
-- **Run with file watching**: `docker-compose up --build --watch`
-- **Validate environment**: `python validate_env.py`
+**autonomous-coding/** — Multi-session coding agent (Claude Agent SDK)
+```
+pip install -r requirements.txt
+python autonomous_agent_demo.py --project-dir ./my_project
+python autonomous_agent_demo.py --project-dir ./my_project --max-iterations 3
+python test_security.py                # security tests
+```
+Two-agent pattern: initializer creates feature list, coding agent works through it across sessions. Bash commands restricted to an allowlist in `security.py`. Default model: `claude-sonnet-4-5-20250929`.
 
-### Testing & Code Quality
+**browser-use-demo/** — Browser automation with Playwright (Python 3.11+)
+```
+pip install -e ".[dev,test]"
+docker-compose up --build              # run
+docker-compose up --build --watch      # run with file watching
+ruff check .                           # lint
+pyright                                # typecheck
+pytest                                 # all tests
+pytest tests/path_to_test.py::test_name -v  # single test
+```
+Test markers: `integration`, `slow`, `asyncio`. Main tool logic in `browser_use_demo/tools/browser.py`. Uses element `ref` targeting (not coordinates). JS utilities in `browser_use_demo/browser_tool_utils/`.
 
-- **Lint**: `ruff check .`
-- **Typecheck**: `pyright`
-- **Run tests**: `pytest`
-- **Run single test**: `pytest tests/path_to_test.py::test_name -v`
-- **Test markers**: `integration`, `slow`, `asyncio`
+**computer-use-demo/** — Desktop control via Computer Use API (Python 3.11+)
+```
+./setup.sh                             # first-time setup
+docker build . -t computer-use-demo:local
+ruff check . && ruff format .          # lint + format
+pyright                                # typecheck
+pytest                                 # all tests
+pytest tests/path_to_test.py::test_name -v  # single test
+```
+Uses custom `ToolError` for tool error handling. Coordinate-based interaction (unlike browser-use-demo's ref-based approach). Ruff line length: 88.
 
-### Code Style
+### TypeScript/Next.js Projects
 
-- **Python**: snake_case for functions/variables, PascalCase for classes
-- **Imports**: Use isort with combine-as-imports
-- **Types**: Add type annotations for all parameters and returns
-- **Minimum Python**: 3.11
+All three use Next.js 14, React 18, TypeScript strict mode, Tailwind CSS, and shadcn/ui components. Commands are the same for each:
 
-## Autonomous Coding
+```
+npm install
+npm run dev       # development server
+npm run build     # production build
+npm run lint      # ESLint
+```
 
-### Setup & Development
+**customer-support-agent/** — Chat UI with Amazon Bedrock Knowledge Base RAG
+- Has UI layout variants: `npm run dev:left`, `npm run dev:right`, `npm run dev:chat`
+- Has build variants too — see `package.json` scripts
+- Sidebar inclusion controlled by `NEXT_PUBLIC_INCLUDE_*` env vars in `config.ts`
+- Requires Node >=18.17.0
 
-- **Install dependencies**: `pip install -r requirements.txt`
-- **Run agent**: `python autonomous_agent_demo.py --project-dir ./my_project`
-- **Run with iteration limit**: `python autonomous_agent_demo.py --project-dir ./my_project --max-iterations 3`
-- **Run with specific model**: `python autonomous_agent_demo.py --project-dir ./my_project --model MODEL_NAME`
-- **Run security tests**: `python test_security.py`
+**financial-data-analyst/** — Data analysis with interactive Recharts visualization
+- Supports multi-format upload (text, code, PDF via pdfjs-dist, images)
+- Chart types: Line, Bar, Multi-Bar, Area, Stacked Area, Pie
 
-### Code Style
+**net-worth-tracker/** — Personal wealth dashboard
+- All data persisted in browser localStorage (`lib/storage.ts`)
+- API integrations for UK financial providers defined in `lib/api-connections.ts`
+- Excel import/export via `xlsx` library (`lib/excel.ts`)
+- Asset/liability type definitions in `lib/types.ts` (11 asset categories, 5 liability categories)
+- Main state management in `components/dashboard.tsx`
+- Specialized tabs: property, pension, equity exposure
 
-- **Python**: snake_case for functions/variables, PascalCase for classes
-- **Security**: Defense-in-depth with bash command allowlists and filesystem restrictions
-- **Types**: Add type annotations for all parameters and returns
+## Architecture Notes
 
-## Computer-Use Demo
-
-### Setup & Development
-
-- **Setup environment**: `./setup.sh`
-- **Build Docker**: `docker build . -t computer-use-demo:local`
-- **Run container**: `docker run -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY -v $(pwd)/computer_use_demo:/home/computeruse/computer_use_demo/ -v $HOME/.anthropic:/home/computeruse/.anthropic -p 5900:5900 -p 8501:8501 -p 6080:6080 -p 8080:8080 -it computer-use-demo:local`
-
-### Testing & Code Quality
-
-- **Lint**: `ruff check .`
-- **Format**: `ruff format .`
-- **Typecheck**: `pyright`
-- **Run tests**: `pytest`
-- **Run single test**: `pytest tests/path_to_test.py::test_name -v`
-
-### Code Style
-
-- **Python**: snake_case for functions/variables, PascalCase for classes
-- **Imports**: Use isort with combine-as-imports
-- **Error handling**: Use custom ToolError for tool errors
-- **Types**: Add type annotations for all parameters and returns
-- **Classes**: Use dataclasses and abstract base classes
-
-## Customer Support Agent
-
-### Setup & Development
-
-- **Install dependencies**: `npm install`
-- **Run dev server**: `npm run dev` (full UI)
-- **UI variants**: `npm run dev:left` (left sidebar), `npm run dev:right` (right sidebar), `npm run dev:chat` (chat only)
-- **Lint**: `npm run lint`
-- **Build**: `npm run build` (full UI), see package.json for variants
-
-### Code Style
-
-- **TypeScript**: Strict mode with proper interfaces
-- **Components**: Function components with React hooks
-- **Formatting**: Follow ESLint Next.js configuration
-- **UI components**: Use shadcn/ui components library
-
-## Financial Data Analyst
-
-### Setup & Development
-
-- **Install dependencies**: `npm install`
-- **Run dev server**: `npm run dev`
-- **Lint**: `npm run lint`
-- **Build**: `npm run build`
-
-### Code Style
-
-- **TypeScript**: Strict mode with proper type definitions
-- **Components**: Function components with type annotations
-- **Visualization**: Use Recharts library for data visualization
-- **State management**: React hooks for state
-
-## Net Worth Tracker
-
-### Setup & Development
-
-- **Install dependencies**: `npm install`
-- **Run dev server**: `npm run dev`
-- **Lint**: `npm run lint`
-- **Build**: `npm run build`
-
-### Code Style
-
-- **TypeScript**: Strict mode with proper type definitions
-- **Components**: Function components with React hooks
-- **Visualization**: Use Recharts library for charts
-- **State management**: React hooks with localStorage persistence
+- Python demos (browser-use, computer-use) share a similar pattern: Streamlit UI → agent loop (`loop.py`) → tool collection → individual tools. Both run inside Docker with VNC access.
+- Browser-use-demo's `browser.py` (~52KB) is the largest single file — it implements all browser actions. Computer-use-demo's equivalent is `tools/computer.py`.
+- The three Next.js apps are independent — they don't share components or libraries despite similar stacks.
+- All projects use `ANTHROPIC_API_KEY` env var. Customer-support-agent additionally needs AWS credentials for Bedrock.
