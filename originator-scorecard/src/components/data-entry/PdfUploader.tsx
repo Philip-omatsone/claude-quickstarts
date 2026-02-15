@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuid } from 'uuid';
-import { FileText, Check, AlertCircle, Loader2, Info, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { FileText, Check, AlertCircle, Loader2, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { db } from '../../db/database';
 import { extractTextFromPdf, extractMetricsFromText } from '../../utils/pdf-extractor';
 import { extractMetricsWithAi, analyseDocument } from '../../utils/claude-api';

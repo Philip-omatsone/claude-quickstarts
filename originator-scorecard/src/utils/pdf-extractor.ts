@@ -20,26 +20,26 @@ export async function extractTextFromPdf(file: File): Promise<string> {
 
     // Group text items by Y position to reconstruct lines/rows
     const items = content.items.filter(
-      (item): item is { str: string; transform: number[]; width: number; height: number } =>
-        'str' in item && item.str.trim().length > 0
+      (item): item is import('pdfjs-dist/types/src/display/api').TextItem =>
+        'str' in item && (item as import('pdfjs-dist/types/src/display/api').TextItem).str.trim().length > 0
     );
 
     if (items.length === 0) continue;
 
     // Sort by Y (descending = top to bottom) then X (left to right)
     const sorted = [...items].sort((a, b) => {
-      const yDiff = b.transform[5] - a.transform[5];
+      const yDiff = (b.transform[5] as number) - (a.transform[5] as number);
       if (Math.abs(yDiff) > 3) return yDiff; // different line
-      return a.transform[4] - b.transform[4]; // same line, sort by X
+      return (a.transform[4] as number) - (b.transform[4] as number); // same line, sort by X
     });
 
     // Group into lines based on Y proximity
     const lines: string[][] = [];
     let currentLine: string[] = [];
-    let lastY = sorted[0]?.transform[5] ?? 0;
+    let lastY = (sorted[0]?.transform[5] as number) ?? 0;
 
     for (const item of sorted) {
-      const y = item.transform[5];
+      const y = item.transform[5] as number;
       if (Math.abs(y - lastY) > 3) {
         if (currentLine.length > 0) lines.push(currentLine);
         currentLine = [];
