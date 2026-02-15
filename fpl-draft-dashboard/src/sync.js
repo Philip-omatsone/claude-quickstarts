@@ -144,13 +144,10 @@ async function syncAll(leagueId) {
       db.setMeta('league_name', league.league.name);
     }
 
-    // Build lookup from league_entries — this is the primary source for:
-    //   - entry_id (the real FPL entry ID needed for /entry/{id}/ API calls)
-    //   - entry_name (team name)
-    //   - player name (first + last)
+    // Build lookup from league_entries
     const leagueEntries = league.league_entries || [];
-    const leInfoById = {};      // keyed by le.id (league entry ID used in standings/matches)
-    const leInfoByEntryId = {}; // keyed by le.entry_id (reverse lookup)
+    const leInfoById = {};
+    const leInfoByEntryId = {};
     for (const le of leagueEntries) {
       const info = {
         entry_id: le.entry_id,
@@ -171,14 +168,12 @@ async function syncAll(leagueId) {
       log('Warning: No league_entries in API response.');
     }
 
-    // Sync managers by merging standings (stats) with league_entries (names, entry_id)
+    // Sync managers by merging standings with league_entries
     const standings = league.standings || [];
     log(`Syncing ${standings.length} managers...`);
 
     for (const s of standings) {
-      // standings.league_entry should match league_entries[].id
       const leInfo = leInfoById[s.league_entry] || leInfoByEntryId[s.league_entry] || {};
-
       const entryId = leInfo.entry_id || s.league_entry;
       const teamName = leInfo.entry_name || s.entry_name || '';
       const playerName = leInfo.player_name || s.player_name || '';
@@ -200,7 +195,7 @@ async function syncAll(leagueId) {
     }
     log('Managers synced.');
 
-    // Sync H2H matches
+    // Sync H2H matches (both finished and upcoming)
     log('Syncing H2H matches...');
     db.clearH2hMatches();
     const matches = league.matches || [];
@@ -224,12 +219,18 @@ async function syncAll(leagueId) {
     }
     log(`${matches.filter(m => m.finished).length} H2H matches synced.`);
 
-    // 4. Extract gameweek scores from H2H matches (reliable, no extra API calls)
+    // Store upcoming fixtures in metadata
+    const upcomingMatches = matches.filter(m => !m.finished);
+    if (upcomingMatches.length > 0) {
+      db.setMeta('upcoming_fixtures', JSON.stringify(upcomingMatches));
+      log(`${upcomingMatches.length} upcoming fixtures stored.`);
+    }
+
+    // 4. Extract gameweek scores from H2H matches
     const managers = db.getAllManagers();
     log('Extracting gameweek scores from match data...');
     const finishedMatches = matches.filter(m => m.finished);
 
-    // Collect all scores per manager so we can compute cumulative totals
     const scoresByManager = {};
     for (const m of finishedMatches) {
       if (!scoresByManager[m.league_entry_1]) scoresByManager[m.league_entry_1] = {};
@@ -238,7 +239,6 @@ async function syncAll(leagueId) {
       scoresByManager[m.league_entry_2][m.event] = m.league_entry_2_points;
     }
 
-    // Now insert with cumulative totals
     for (const [managerId, eventScores] of Object.entries(scoresByManager)) {
       const events = Object.keys(eventScores).map(Number).sort((a, b) => a - b);
       let cumulative = 0;
@@ -256,7 +256,7 @@ async function syncAll(leagueId) {
 
     log(`Extracted scores from ${finishedMatches.length} H2H matches for ${Object.keys(scoresByManager).length} managers.`);
 
-    // Also try the history API for richer data (bench_points, total_points), but don't fail if it errors
+    // Also try the history API for richer data
     let historySuccess = 0;
     let historyFailed = [];
     for (const mgr of managers) {
@@ -320,6 +320,32 @@ async function syncAll(leagueId) {
       log('Team picks already up to date.');
     }
 
+    // 5b. Fetch live event data for per-player GW scores
+    const gwStartEvent = lastSyncedEvent > 0 ? lastSyncedEvent : 1;
+    if (gwStartEvent <= currentEvent) {
+      log(`Fetching player GW scores for GW ${gwStartEvent} to ${currentEvent}...`);
+      let gwSuccess = 0;
+      for (let gw = gwStartEvent; gw <= currentEvent; gw++) {
+        try {
+          const live = await api.getEventLive(gw);
+          const liveElements = live.elements || [];
+          for (const el of liveElements) {
+            const stats = el.stats || {};
+            db.upsertPlayerGwScore({
+              player_id: el.id,
+              event: gw,
+              points: stats.total_points || 0,
+              minutes: stats.minutes || 0,
+            });
+          }
+          gwSuccess++;
+        } catch (err) {
+          log(`Warning: Could not fetch live data for GW${gw}: ${err.message}`);
+        }
+      }
+      log(`Player GW scores synced for ${gwSuccess} gameweeks.`);
+    }
+
     // 6. Fetch draft picks
     log('Fetching draft picks...');
     try {
@@ -348,8 +374,6 @@ async function syncAll(leagueId) {
       const txData = await api.getTransactions(leagueId);
       const txList = txData.transactions || txData || [];
       if (Array.isArray(txList) && txList.length > 0) {
-        // Build entry_id -> league_entry (manager id) mapping
-        // Transactions API returns entry_id in the "entry" field
         const entryToMgr = {};
         for (const mgr of managers) {
           const eid = mgr.entry_id || mgr.id;
@@ -358,7 +382,6 @@ async function syncAll(leagueId) {
 
         db.clearTransactions();
         for (const t of txList) {
-          // t.entry may be entry_id or league_entry depending on API version
           const managerId = entryToMgr[t.entry] || t.entry;
           db.insertTransaction({
             manager_id: managerId,

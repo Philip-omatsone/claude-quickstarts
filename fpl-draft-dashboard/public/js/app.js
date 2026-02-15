@@ -3,10 +3,13 @@
 const POS_LABELS = { 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
 const POS_CLASSES = { 1: 'pos-gk', 2: 'pos-def', 3: 'pos-mid', 4: 'pos-fwd' };
 const COLORS = [
-  '#00ff87', '#e90052', '#00c8ff', '#f0c040', '#bf5af2',
-  '#ff6b35', '#04e762', '#ff1493', '#32cd32', '#ffa500',
-  '#00bfff', '#ff4500',
+  '#4ecdc4', '#5b8def', '#e6a23c', '#c0392b', '#9b59b6',
+  '#3d9970', '#e74c3c', '#f39c12', '#1abc9c', '#3498db',
+  '#e67e22', '#2ecc71',
 ];
+
+const CHART_GRID = 'rgba(255,255,255,0.06)';
+const CHART_TICK = '#8892a0';
 
 let allPlayers = [];
 let allTransactions = [];
@@ -58,8 +61,6 @@ async function startSync() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ leagueId }),
     });
-
-    // Poll sync status
     await pollSync();
   } catch (err) {
     showSyncError(err.message);
@@ -102,7 +103,7 @@ async function pollSync() {
       setTimeout(poll, 1500);
     } else if (status && status.error) {
       progressEl.style.width = '100%';
-      progressEl.style.backgroundColor = '#e90052';
+      progressEl.style.backgroundColor = 'var(--error)';
       setTimeout(() => {
         document.getElementById('sync-overlay').classList.add('hidden');
         showSyncError(status.error);
@@ -144,10 +145,8 @@ async function loadDashboard() {
     document.getElementById('league-info').textContent = 'League #' + status.leagueId;
   }
 
-  // Update league name after data loads (will be set below after league data fetches)
-
   // Load all data in parallel
-  const [leagueData, h2hData, gameweeks, teamRatings, playersData, draftData, txData] =
+  const [leagueData, h2hData, gameweeks, teamRatings, playersData, draftData, txData, powerRankings, predictions, heatmapData, draftAnalysis] =
     await Promise.all([
       fetchJson('/api/league'),
       fetchJson('/api/h2h'),
@@ -156,24 +155,32 @@ async function loadDashboard() {
       fetchJson('/api/players'),
       fetchJson('/api/draft'),
       fetchJson('/api/transactions'),
+      fetchJson('/api/power-rankings'),
+      fetchJson('/api/h2h-predictions'),
+      fetchJson('/api/activity-heatmap'),
+      fetchJson('/api/draft-analysis'),
     ]);
 
   managers = leagueData ? leagueData.managers || [] : [];
   allPlayers = playersData || [];
   allTransactions = txData || [];
 
-  // Show league name in header if available
   if (leagueData && leagueData.leagueName) {
     document.getElementById('league-info').textContent = leagueData.leagueName;
   }
 
   renderLeague(leagueData, gameweeks);
+  renderPowerRankings(powerRankings);
   renderH2H(h2hData);
+  renderH2hPredictions(predictions);
   renderTeams(teamRatings);
   renderTrends(gameweeks, managers);
   renderPlayers(allPlayers);
-  renderDraft(draftData);
+  renderDraft(draftAnalysis);
+  renderDraftAnalysis(draftAnalysis);
   renderTransactions(allTransactions, managers);
+  renderActivityHeatmap(heatmapData);
+  setupWhatIfFilter(managers);
 }
 
 // --- League Tab ---
@@ -182,7 +189,6 @@ function renderLeague(data, gameweeks) {
   if (!data || !data.managers) return;
   const mgrs = data.managers;
 
-  // Standings
   const tbody = document.querySelector('#standings-table tbody');
   tbody.innerHTML = mgrs
     .sort((a, b) => b.points_total - a.points_total)
@@ -201,11 +207,9 @@ function renderLeague(data, gameweeks) {
     `)
     .join('');
 
-  // Season stats
   const statsEl = document.getElementById('season-stats');
   const gws = gameweeks || [];
 
-  // Group by manager
   const byMgr = {};
   for (const g of gws) {
     if (!byMgr[g.manager_id]) byMgr[g.manager_id] = [];
@@ -215,13 +219,11 @@ function renderLeague(data, gameweeks) {
   const mgrMap = {};
   for (const m of mgrs) mgrMap[m.id] = m;
 
-  // Highest GW score
   let highestGw = { points: 0 };
   for (const g of gws) {
     if (g.points > highestGw.points) highestGw = g;
   }
 
-  // Most consistent (lowest std dev)
   let mostConsistent = { name: '-', team: '', stdDev: Infinity };
   for (const [mId, scores] of Object.entries(byMgr)) {
     if (scores.length < 2) continue;
@@ -234,16 +236,13 @@ function renderLeague(data, gameweeks) {
     }
   }
 
-  // Biggest win margin
-  let biggestWin = { margin: 0, desc: '-' };
-  // We'd need H2H data here, but approximate from stats
   const topScorer = mgrs.reduce((best, m) => (m.points_for > (best?.points_for || 0) ? m : best), mgrs[0]);
 
   statsEl.innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Highest GW Score</div>
       <div class="stat-value">${highestGw.points || '-'}</div>
-      <div class="stat-sub">${escapeHtml(mgrMap[highestGw.manager_id]?.name || '')} (${escapeHtml(mgrMap[highestGw.manager_id]?.player_name || '')}) — GW${highestGw.event || ''}</div>
+      <div class="stat-sub">${escapeHtml(mgrMap[highestGw.manager_id]?.name || '')} — GW${highestGw.event || ''}</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Most Consistent</div>
@@ -261,6 +260,37 @@ function renderLeague(data, gameweeks) {
       <div class="stat-sub">GWs played: ${new Set(gws.map(g => g.event)).size}</div>
     </div>
   `;
+}
+
+// --- Power Rankings ---
+
+function renderPowerRankings(data) {
+  const el = document.getElementById('power-rankings-list');
+  if (!data || !data.length) {
+    el.innerHTML = '<p style="color:var(--text-muted);padding:1rem">Not enough gameweek data for power rankings.</p>';
+    return;
+  }
+
+  el.innerHTML = data.map(r => {
+    const trendIcon = r.trend === 'up' ? '&#9650;' : r.trend === 'down' ? '&#9660;' : '&#8212;';
+    const formDots = r.form.map(f => `<span class="form-dot ${f}">${f}</span>`).join('');
+
+    return `
+      <div class="power-ranking-row">
+        <div class="pr-rank">${r.rank}</div>
+        <div class="pr-trend ${r.trend}">${trendIcon}</div>
+        <div class="pr-info">
+          <div class="pr-name">${escapeHtml(r.manager.player_name)}</div>
+          <div class="pr-team">${escapeHtml(r.manager.name)}</div>
+        </div>
+        <div class="pr-form">${formDots}</div>
+        <div class="pr-stats">
+          <div>Rolling Pts: <span class="pr-stat-value">${r.rollingPoints}</span></div>
+          <div>Avg: <span class="pr-stat-value">${r.avgPoints}</span></div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 // --- H2H Tab ---
@@ -298,66 +328,140 @@ function renderH2H(data) {
 }
 
 async function showH2hDetail(id1, id2) {
-  const matches = await fetchJson(`/api/h2h/${id1}/${id2}`);
-  if (!matches || !matches.length) return;
+  // Fetch rivalry stats instead of just matches
+  const rivalry = await fetchJson(`/api/rivalry/${id1}/${id2}`);
+  if (!rivalry) return;
 
-  const mgrMap = {};
-  for (const m of managers) mgrMap[m.id] = m;
-
-  const name1 = mgrMap[id1]?.name || mgrMap[id1]?.player_name || id1;
-  const name2 = mgrMap[id2]?.name || mgrMap[id2]?.player_name || id2;
+  const name1 = rivalry.manager1?.name || rivalry.manager1?.player_name || id1;
+  const name2 = rivalry.manager2?.name || rivalry.manager2?.player_name || id2;
 
   document.getElementById('h2h-detail').classList.remove('hidden');
   document.getElementById('h2h-detail-title').textContent = `${name1} vs ${name2}`;
   document.getElementById('h2h-p1-name').textContent = name1;
   document.getElementById('h2h-p2-name').textContent = name2;
 
+  // Render rivalry stats
+  const statsEl = document.getElementById('rivalry-stats-section');
+  const streakText = rivalry.streak.count > 0
+    ? `${rivalry.streak.count} ${rivalry.streak.type === 'W' ? 'Win' : rivalry.streak.type === 'L' ? 'Loss' : 'Draw'}${rivalry.streak.count > 1 ? 's' : ''}`
+    : '-';
+
+  statsEl.innerHTML = `
+    <div class="rivalry-stats">
+      <div class="rivalry-stat">
+        <div class="label">Total Matches</div>
+        <div class="value">${rivalry.totalMatches}</div>
+      </div>
+      <div class="rivalry-stat">
+        <div class="label">Record</div>
+        <div class="value">
+          <span style="color:var(--win)">${rivalry.wins1}</span> -
+          <span style="color:var(--draw)">${rivalry.draws}</span> -
+          <span style="color:var(--loss)">${rivalry.wins2}</span>
+        </div>
+        <div class="sub">W-D-L</div>
+      </div>
+      <div class="rivalry-stat">
+        <div class="label">Avg Score</div>
+        <div class="value">${rivalry.avgPts1} - ${rivalry.avgPts2}</div>
+      </div>
+      <div class="rivalry-stat">
+        <div class="label">Biggest Win</div>
+        <div class="value" style="color:var(--win)">+${rivalry.biggestWin1.margin}</div>
+        <div class="sub">${rivalry.biggestWin1.event ? 'GW' + rivalry.biggestWin1.event : '-'}</div>
+      </div>
+      <div class="rivalry-stat">
+        <div class="label">Biggest Loss</div>
+        <div class="value" style="color:var(--loss)">-${rivalry.biggestWin2.margin}</div>
+        <div class="sub">${rivalry.biggestWin2.event ? 'GW' + rivalry.biggestWin2.event : '-'}</div>
+      </div>
+      <div class="rivalry-stat">
+        <div class="label">Current Streak</div>
+        <div class="value">${streakText}</div>
+      </div>
+    </div>
+  `;
+
+  // Render match history table
   const tbody = document.querySelector('#h2h-detail-table tbody');
-  tbody.innerHTML = matches
-    .map((m) => {
-      // Normalize so id1 is always on the left
-      let p1pts, p2pts;
-      if (m.manager_1_id === id1) {
-        p1pts = m.manager_1_points;
-        p2pts = m.manager_2_points;
-      } else {
-        p1pts = m.manager_2_points;
-        p2pts = m.manager_1_points;
-      }
-      let result;
-      if (p1pts > p2pts) result = `<span class="win">Win</span>`;
-      else if (p1pts < p2pts) result = `<span class="loss">Loss</span>`;
-      else result = `<span class="draw">Draw</span>`;
+  tbody.innerHTML = rivalry.allResults
+    .map((r) => {
+      let resultHtml;
+      if (r.result === 'W') resultHtml = `<span style="color:var(--win)">Win</span>`;
+      else if (r.result === 'L') resultHtml = `<span style="color:var(--loss)">Loss</span>`;
+      else resultHtml = `<span style="color:var(--draw)">Draw</span>`;
 
       return `<tr>
-        <td>GW${m.event}</td>
-        <td>${p1pts}</td>
-        <td>${p1pts} - ${p2pts}</td>
-        <td>${p2pts}</td>
-        <td>${result}</td>
+        <td>GW${r.event}</td>
+        <td>${r.pts1}</td>
+        <td>${r.pts1} - ${r.pts2}</td>
+        <td>${r.pts2}</td>
+        <td>${resultHtml}</td>
       </tr>`;
     })
     .join('');
 }
 
-// --- Teams Tab ---
+// --- H2H Predictions ---
+
+function renderH2hPredictions(data) {
+  const section = document.getElementById('h2h-predictions-section');
+  const el = document.getElementById('h2h-predictions');
+
+  if (!data || !data.length) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+
+  el.innerHTML = data.map(p => `
+    <div class="prediction-card">
+      <div class="prediction-matchup">
+        <div class="prediction-manager">
+          <div class="mgr-name">${escapeHtml(p.manager1.player_name)}</div>
+          <div class="mgr-avg">Avg ${p.m1Avg} pts/GW</div>
+        </div>
+        <div class="prediction-vs">GW${p.event}</div>
+        <div class="prediction-manager">
+          <div class="mgr-name">${escapeHtml(p.manager2.player_name)}</div>
+          <div class="mgr-avg">Avg ${p.m2Avg} pts/GW</div>
+        </div>
+      </div>
+      <div class="prediction-bar">
+        <div class="bar-left" style="width:${p.prob1}%"></div>
+        <div class="bar-right" style="width:${p.prob2}%"></div>
+      </div>
+      <div class="prediction-probs">
+        <span class="prob-left">${p.prob1}%</span>
+        <span style="color:var(--text-muted);font-size:0.75rem">H2H: ${p.h2h.wins}-${p.h2h.draws}-${p.h2h.losses}</span>
+        <span class="prob-right">${p.prob2}%</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// --- Teams Tab (FIXED: uses actual points_for) ---
 
 function renderTeams(ratings) {
   if (!ratings || !ratings.length) return;
 
-  // Team ratings bar chart
+  // Sort by actual points scored
+  const sorted = [...ratings].sort((a, b) => b.actualPoints - a.actualPoints);
+
+  // Manager points bar chart (actual points scored in league)
   destroyChart('team-ratings-chart');
   const ctx1 = document.getElementById('team-ratings-chart').getContext('2d');
   charts['team-ratings-chart'] = new Chart(ctx1, {
     type: 'bar',
     data: {
-      labels: ratings.map((r) => r.manager.player_name),
+      labels: sorted.map((r) => r.manager.player_name),
       datasets: [
         {
-          label: 'Squad Total Points',
-          data: ratings.map((r) => r.totalPoints),
-          backgroundColor: COLORS.slice(0, ratings.length).map((c) => c + '88'),
-          borderColor: COLORS.slice(0, ratings.length),
+          label: 'Points Scored',
+          data: sorted.map((r) => r.actualPoints),
+          backgroundColor: COLORS.slice(0, sorted.length).map((c) => c + '66'),
+          borderColor: COLORS.slice(0, sorted.length),
           borderWidth: 1,
         },
       ],
@@ -367,8 +471,8 @@ function renderTeams(ratings) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        y: { ticks: { color: '#a0a0b0' }, grid: { color: '#2a2a4a' } },
-        x: { ticks: { color: '#a0a0b0' }, grid: { display: false } },
+        y: { ticks: { color: CHART_TICK }, grid: { color: CHART_GRID } },
+        x: { ticks: { color: CHART_TICK }, grid: { display: false } },
       },
     },
   });
@@ -381,19 +485,19 @@ function renderTeams(ratings) {
     data: {
       labels: ratings.map((r) => r.manager.player_name),
       datasets: [
-        { label: 'GK', data: ratings.map((r) => r.positionStrength['1'] || 0), backgroundColor: '#f0c040' },
-        { label: 'DEF', data: ratings.map((r) => r.positionStrength['2'] || 0), backgroundColor: '#00c8ff' },
-        { label: 'MID', data: ratings.map((r) => r.positionStrength['3'] || 0), backgroundColor: '#00ff87' },
-        { label: 'FWD', data: ratings.map((r) => r.positionStrength['4'] || 0), backgroundColor: '#e90052' },
+        { label: 'GK', data: ratings.map((r) => r.positionStrength['1'] || 0), backgroundColor: 'rgba(230,162,60,0.6)' },
+        { label: 'DEF', data: ratings.map((r) => r.positionStrength['2'] || 0), backgroundColor: 'rgba(91,141,239,0.6)' },
+        { label: 'MID', data: ratings.map((r) => r.positionStrength['3'] || 0), backgroundColor: 'rgba(78,205,196,0.6)' },
+        { label: 'FWD', data: ratings.map((r) => r.positionStrength['4'] || 0), backgroundColor: 'rgba(192,57,43,0.6)' },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#a0a0b0' } } },
+      plugins: { legend: { labels: { color: CHART_TICK } } },
       scales: {
-        x: { stacked: true, ticks: { color: '#a0a0b0' }, grid: { display: false } },
-        y: { stacked: true, ticks: { color: '#a0a0b0' }, grid: { color: '#2a2a4a' } },
+        x: { stacked: true, ticks: { color: CHART_TICK }, grid: { display: false } },
+        y: { stacked: true, ticks: { color: CHART_TICK }, grid: { color: CHART_GRID } },
       },
     },
   });
@@ -403,9 +507,9 @@ function renderTeams(ratings) {
   listsEl.innerHTML = '<div class="squad-grid">' +
     ratings.map((r) => `
       <div class="squad-card">
-        <h4>${escapeHtml(r.manager.player_name)} — ${escapeHtml(r.manager.name)}</h4>
-        <div style="margin-bottom:0.5rem;font-size:0.85rem;color:var(--text-secondary)">
-          Avg Form: ${r.avgForm} | Avg ICT: ${r.avgIct} | Squad Pts: ${r.totalPoints}
+        <h4>${escapeHtml(r.manager.player_name)} <span class="mgr-sub">— ${escapeHtml(r.manager.name)}</span></h4>
+        <div style="margin-bottom:0.5rem;font-size:0.8rem;color:var(--text-secondary)">
+          Avg Form: ${r.avgForm} | Avg ICT: ${r.avgIct} | Pts Scored: ${r.actualPoints}
         </div>
         <table>
           <thead><tr><th>Player</th><th>Pos</th><th>Pts</th><th>Form</th></tr></thead>
@@ -435,14 +539,12 @@ function renderTrends(gameweeks, mgrs) {
   const mgrMap = {};
   for (const m of mgrs) mgrMap[m.id] = m;
 
-  // Group scores by manager
   const byMgr = {};
   for (const g of gameweeks) {
     if (!byMgr[g.manager_id]) byMgr[g.manager_id] = [];
     byMgr[g.manager_id].push(g);
   }
 
-  // Get all events
   const events = [...new Set(gameweeks.map((g) => g.event))].sort((a, b) => a - b);
 
   // Points per GW
@@ -509,8 +611,8 @@ function renderTrends(gameweeks, mgrs) {
     data: {
       labels: events.map((e) => 'GW' + e),
       datasets: [
-        { label: 'Highest', data: highs, backgroundColor: '#00ff8866', borderColor: '#00ff88', borderWidth: 1 },
-        { label: 'Lowest', data: lows, backgroundColor: '#e9005266', borderColor: '#e90052', borderWidth: 1 },
+        { label: 'Highest', data: highs, backgroundColor: 'rgba(61,153,112,0.4)', borderColor: '#3d9970', borderWidth: 1 },
+        { label: 'Lowest', data: lows, backgroundColor: 'rgba(192,57,43,0.4)', borderColor: '#c0392b', borderWidth: 1 },
       ],
     },
     options: chartOptions('Points'),
@@ -533,7 +635,7 @@ function renderTrends(gameweeks, mgrs) {
       datasets: [{
         label: 'Std Deviation',
         data: consistencyData.map((c) => c.stdDev),
-        backgroundColor: consistencyData.map((_, i) => COLORS[i % COLORS.length] + '88'),
+        backgroundColor: consistencyData.map((_, i) => COLORS[i % COLORS.length] + '66'),
         borderColor: consistencyData.map((_, i) => COLORS[i % COLORS.length]),
         borderWidth: 1,
       }],
@@ -549,10 +651,10 @@ function chartOptions(yLabel) {
   return {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { labels: { color: '#a0a0b0' } } },
+    plugins: { legend: { labels: { color: CHART_TICK } } },
     scales: {
-      x: { ticks: { color: '#a0a0b0' }, grid: { color: '#2a2a4a' } },
-      y: { title: { display: true, text: yLabel, color: '#a0a0b0' }, ticks: { color: '#a0a0b0' }, grid: { color: '#2a2a4a' } },
+      x: { ticks: { color: CHART_TICK }, grid: { color: CHART_GRID } },
+      y: { title: { display: true, text: yLabel, color: CHART_TICK }, ticks: { color: CHART_TICK }, grid: { color: CHART_GRID } },
     },
   };
 }
@@ -582,7 +684,7 @@ function filterPlayers() {
 
   const tbody = document.querySelector('#players-table tbody');
   tbody.innerHTML = filtered
-    .slice(0, 200) // Limit for performance
+    .slice(0, 200)
     .map((p) => `
       <tr>
         <td>${escapeHtml(p.web_name)}</td>
@@ -599,25 +701,66 @@ function filterPlayers() {
     .join('');
 }
 
-// --- Draft Tab ---
+// --- Draft Tab (with analysis) ---
 
-function renderDraft(picks) {
-  if (!picks || !picks.length) return;
+function renderDraft(data) {
+  if (!data || !data.picks || !data.picks.length) return;
 
   const tbody = document.querySelector('#draft-table tbody');
-  tbody.innerHTML = picks
-    .map((dp) => `
+  tbody.innerHTML = data.picks
+    .map((dp) => {
+      const valueClass = dp.valueScore > 0 ? 'value-positive' : dp.valueScore < 0 ? 'value-negative' : '';
+      const valuePrefix = dp.valueScore > 0 ? '+' : '';
+      return `
       <tr>
         <td>${dp.round}</td>
         <td>${dp.pick}</td>
-        <td>${dp.manager ? `${escapeHtml(dp.manager.name)} <span style="color:var(--text-muted);font-size:0.85em">(${escapeHtml(dp.manager.player_name)})</span>` : '-'}</td>
+        <td>${dp.manager ? `${escapeHtml(dp.manager.name)} <span style="color:var(--text-secondary);font-size:0.8em">(${escapeHtml(dp.manager.player_name)})</span>` : '-'}</td>
         <td>${dp.player ? escapeHtml(dp.player.web_name) : '-'}</td>
         <td>${dp.player ? `<span class="pos-badge ${POS_CLASSES[dp.player.position]}">${POS_LABELS[dp.player.position]}</span>` : '-'}</td>
         <td>${dp.player ? dp.player.total_points : '-'}</td>
+        <td>${dp.ppg || '-'}</td>
+        <td><span class="${valueClass}">${valuePrefix}${dp.valueScore}</span></td>
         <td>${dp.was_auto ? 'Yes' : ''}</td>
       </tr>
-    `)
+    `;
+    })
     .join('');
+}
+
+function renderDraftAnalysis(data) {
+  const section = document.getElementById('draft-analysis-section');
+  const el = document.getElementById('draft-analysis');
+
+  if (!data || !data.steals || !data.steals.length) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+
+  el.innerHTML = `
+    <div class="draft-summary">
+      <div class="draft-summary-card">
+        <h4>Top 5 Steals</h4>
+        ${data.steals.map(s => `
+          <div class="draft-summary-item">
+            <span>${escapeHtml(s.player?.web_name || '?')} <span style="color:var(--text-secondary);font-size:0.8em">Rd${s.round} by ${escapeHtml(s.manager?.player_name || '?')}</span></span>
+            <span class="value-positive">+${s.valueScore}</span>
+          </div>
+        `).join('')}
+      </div>
+      <div class="draft-summary-card">
+        <h4>Top 5 Busts</h4>
+        ${data.busts.map(b => `
+          <div class="draft-summary-item">
+            <span>${escapeHtml(b.player?.web_name || '?')} <span style="color:var(--text-secondary);font-size:0.8em">Rd${b.round} by ${escapeHtml(b.manager?.player_name || '?')}</span></span>
+            <span class="value-negative">${b.valueScore}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
 
 // --- Transactions Tab ---
@@ -626,7 +769,6 @@ function renderTransactions(txs, mgrs) {
   if (!txs) return;
   allTransactions = txs;
 
-  // Populate manager filter
   const select = document.getElementById('tx-manager-filter');
   const existingOpts = select.querySelectorAll('option:not(:first-child)');
   existingOpts.forEach((o) => o.remove());
@@ -665,15 +807,170 @@ function filterTransactions() {
 
       return `<tr>
         <td>GW${t.event || '-'}</td>
-        <td>${t.manager ? `${escapeHtml(t.manager.name)} <span style="color:var(--text-muted);font-size:0.85em">(${escapeHtml(t.manager.player_name)})</span>` : '-'}</td>
-        <td style="color:var(--accent)">${t.player_in ? escapeHtml(t.player_in.web_name) : '-'}</td>
-        <td style="color:var(--accent-secondary)">${t.player_out ? escapeHtml(t.player_out.web_name) : '-'}</td>
+        <td>${t.manager ? `${escapeHtml(t.manager.name)} <span style="color:var(--text-secondary);font-size:0.8em">(${escapeHtml(t.manager.player_name)})</span>` : '-'}</td>
+        <td style="color:var(--success)">${t.player_in ? escapeHtml(t.player_in.web_name) : '-'}</td>
+        <td style="color:var(--error)">${t.player_out ? escapeHtml(t.player_out.web_name) : '-'}</td>
         <td>${typeBadge}</td>
         <td>${resultBadge}</td>
         <td>${date}</td>
       </tr>`;
     })
     .join('');
+}
+
+// --- Activity Heatmap ---
+
+function renderActivityHeatmap(data) {
+  const section = document.getElementById('activity-heatmap-section');
+  const el = document.getElementById('activity-heatmap');
+
+  if (!data || !data.events || !data.events.length) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+
+  const events = data.events;
+  const maxCount = Math.max(...data.managers.map(m => m.mostActiveCount), 1);
+
+  let html = '<table><thead><tr><th>Manager</th>';
+  for (const e of events) {
+    html += `<th>GW${e}</th>`;
+  }
+  html += '<th>Total</th></tr></thead><tbody>';
+
+  for (const m of data.managers) {
+    html += `<tr><td style="white-space:nowrap;font-weight:500">${escapeHtml(m.manager.player_name)}</td>`;
+    for (const e of events) {
+      const count = m.heatmap[e] || 0;
+      const intensity = count > 0 ? Math.min(count / maxCount, 1) : 0;
+      const bg = count > 0
+        ? `rgba(78,205,196,${0.1 + intensity * 0.5})`
+        : 'transparent';
+      const isMostActive = e === m.mostActiveGw && count > 0;
+      const border = isMostActive ? 'border:1px solid var(--accent)' : '';
+      html += `<td class="heat-cell" style="background:${bg};${border}">${count || ''}</td>`;
+    }
+    html += `<td style="font-weight:600">${m.total}</td></tr>`;
+  }
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+// --- What-If Transfer Analyzer ---
+
+function setupWhatIfFilter(mgrs) {
+  const select = document.getElementById('whatif-manager-filter');
+  const existingOpts = select.querySelectorAll('option:not(:first-child)');
+  existingOpts.forEach((o) => o.remove());
+  for (const m of mgrs) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = `${m.name} (${m.player_name})`;
+    select.appendChild(opt);
+  }
+}
+
+async function loadWhatIf() {
+  const managerId = document.getElementById('whatif-manager-filter').value;
+  const el = document.getElementById('whatif-content');
+
+  if (!managerId) {
+    el.innerHTML = '';
+    return;
+  }
+
+  el.innerHTML = '<div class="loading">Loading transfer analysis</div>';
+
+  const data = await fetchJson(`/api/what-if/${managerId}`);
+  if (!data) {
+    el.innerHTML = '<p style="color:var(--text-muted)">Could not load data.</p>';
+    return;
+  }
+
+  if (!data.transfers || data.transfers.length === 0) {
+    el.innerHTML = '<p style="color:var(--text-muted)">No accepted transfers found for this manager.</p>';
+    return;
+  }
+
+  const netColor = data.totalNet >= 0 ? 'var(--success)' : 'var(--error)';
+  const netPrefix = data.totalNet >= 0 ? '+' : '';
+  const dataNote = data.hasGwScores
+    ? 'Points calculated from actual gameweek data since each transfer'
+    : 'Using season total points (re-sync to get per-gameweek accuracy)';
+
+  let summaryHtml = `
+    <div class="whatif-summary">
+      <div class="whatif-stat">
+        <div class="label">Net Impact</div>
+        <div class="value" style="color:${netColor}">${netPrefix}${data.totalNet}</div>
+        <div class="sub">pts from ${data.transfers.length} transfers</div>
+      </div>
+  `;
+
+  if (data.best) {
+    const bestColor = data.best.netImpact >= 0 ? 'var(--success)' : 'var(--error)';
+    summaryHtml += `
+      <div class="whatif-stat">
+        <div class="label">Best Transfer</div>
+        <div class="value" style="color:${bestColor}">${data.best.netImpact >= 0 ? '+' : ''}${data.best.netImpact}</div>
+        <div class="sub">${escapeHtml(data.best.playerIn?.web_name || '?')} in for ${escapeHtml(data.best.playerOut?.web_name || '?')}</div>
+      </div>
+    `;
+  }
+
+  if (data.worst) {
+    summaryHtml += `
+      <div class="whatif-stat">
+        <div class="label">Worst Transfer</div>
+        <div class="value" style="color:var(--error)">${data.worst.netImpact >= 0 ? '+' : ''}${data.worst.netImpact}</div>
+        <div class="sub">${escapeHtml(data.worst.playerIn?.web_name || '?')} in for ${escapeHtml(data.worst.playerOut?.web_name || '?')}</div>
+      </div>
+    `;
+  }
+
+  summaryHtml += '</div>';
+  summaryHtml += `<p class="hint" style="margin-bottom:1rem">${dataNote}</p>`;
+
+  const tableHtml = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>GW</th>
+            <th>Type</th>
+            <th>Player Out</th>
+            <th>Pts Since</th>
+            <th>Player In</th>
+            <th>Pts Since</th>
+            <th>Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.transfers.map(t => {
+            const netClass = t.netImpact >= 0 ? 'value-positive' : 'value-negative';
+            const netPrefix = t.netImpact >= 0 ? '+' : '';
+            const typeBadge = t.kind === 'w'
+              ? '<span class="tx-badge tx-waiver">Waiver</span>'
+              : '<span class="tx-badge tx-free">Free Agent</span>';
+            return `<tr>
+              <td>GW${t.event}</td>
+              <td>${typeBadge}</td>
+              <td style="color:var(--error)">${escapeHtml(t.playerOut?.web_name || '?')}</td>
+              <td>${t.pointsOutSince}</td>
+              <td style="color:var(--success)">${escapeHtml(t.playerIn?.web_name || '?')}</td>
+              <td>${t.pointsInSince}</td>
+              <td><span class="${netClass}">${netPrefix}${t.netImpact}</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  el.innerHTML = summaryHtml + tableHtml;
 }
 
 // --- Utilities ---

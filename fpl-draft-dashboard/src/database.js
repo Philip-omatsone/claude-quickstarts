@@ -33,7 +33,6 @@ function flushDb() {
 }
 
 // --- sql.js compatibility wrapper ---
-// Mimics the better-sqlite3 API so the rest of the code stays the same.
 
 function createStatement(sql) {
   return {
@@ -211,6 +210,14 @@ function initSchema() {
       result TEXT,
       added TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS player_gw_scores (
+      player_id INTEGER,
+      event INTEGER,
+      points INTEGER DEFAULT 0,
+      minutes INTEGER DEFAULT 0,
+      UNIQUE(player_id, event)
+    );
   `);
 }
 
@@ -307,6 +314,15 @@ function insertTransaction(t) {
   `).run(t);
 }
 
+function upsertPlayerGwScore(s) {
+  getDb().prepare(`
+    INSERT INTO player_gw_scores (player_id, event, points, minutes)
+    VALUES (@player_id, @event, @points, @minutes)
+    ON CONFLICT(player_id, event) DO UPDATE SET
+      points=@points, minutes=@minutes
+  `).run(s);
+}
+
 // --- Query helpers ---
 
 function getAllManagers() {
@@ -378,6 +394,24 @@ function setLastSyncedEvent(event) {
   setMeta('last_synced_event', event);
 }
 
+function getPlayerGwScores(playerId) {
+  return getDb().prepare('SELECT * FROM player_gw_scores WHERE player_id = ? ORDER BY event').all(playerId);
+}
+
+function getPlayerPointsSinceEvent(playerId, event) {
+  const row = getDb().prepare('SELECT COALESCE(SUM(points), 0) as total FROM player_gw_scores WHERE player_id = ? AND event > ?').get(playerId, event);
+  return row ? row.total : 0;
+}
+
+function getAllPlayerGwScores() {
+  return getDb().prepare('SELECT * FROM player_gw_scores ORDER BY event, player_id').all();
+}
+
+function getPlayerGwScoreCount() {
+  const row = getDb().prepare('SELECT COUNT(*) as cnt FROM player_gw_scores').get();
+  return row ? row.cnt : 0;
+}
+
 module.exports = {
   initDb,
   flushDb,
@@ -394,6 +428,7 @@ module.exports = {
   insertDraftPick,
   clearTransactions,
   insertTransaction,
+  upsertPlayerGwScore,
   getAllManagers,
   getGameweekScores,
   getH2hMatches,
@@ -406,4 +441,8 @@ module.exports = {
   getManagerCount,
   getLastSyncedEvent,
   setLastSyncedEvent,
+  getPlayerGwScores,
+  getPlayerPointsSinceEvent,
+  getAllPlayerGwScores,
+  getPlayerGwScoreCount,
 };
