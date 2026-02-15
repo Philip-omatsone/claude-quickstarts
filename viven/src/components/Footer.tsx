@@ -2,17 +2,20 @@ import Link from "next/link";
 import { Logo } from "./Logo";
 
 const footerLinks = {
-  Product: [
+  "For Buyers": [
     { label: "Buyer Report", href: "/buyers" },
-    { label: "Rental Report", href: "/renters" },
-    { label: "Reports & Tools", href: "/reports" },
-    { label: "Pricing", href: "/reports#pricing" },
+    { label: "Calculators", href: "/buyers/calculators" },
+    { label: "Checklists", href: "/buyers/checklists" },
+    { label: "Buying Guides", href: "/buyers/guides" },
+    { label: "A-Z Glossary", href: "/buyers/guides/a-z" },
+    { label: "Market Data", href: "/buyers/market" },
   ],
-  Company: [
-    { label: "About", href: "/about" },
-    { label: "Blog", href: "/blog" },
-    { label: "Contact", href: "/contact" },
-    { label: "Careers", href: "/careers" },
+  "For Renters": [
+    { label: "Rental Report", href: "/renters" },
+    { label: "Calculators", href: "/renters/calculators" },
+    { label: "Checklists", href: "/renters/checklists" },
+    { label: "Renting Guides", href: "/renters/guides" },
+    { label: "Email Templates", href: "/renters/templates" },
   ],
   Legal: [
     { label: "Privacy Policy", href: "/privacy" },
