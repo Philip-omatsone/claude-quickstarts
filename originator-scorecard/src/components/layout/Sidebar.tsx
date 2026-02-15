@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Table2, PlusCircle, Newspaper, GitCompare, Shield } from 'lucide-react';
+import { LayoutDashboard, Table2, PlusCircle, Newspaper, GitCompare, Shield, Sparkles } from 'lucide-react';
 
 const navGroups = [
   {
     label: 'Overview',
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/overview', label: 'Company Overview', icon: Sparkles },
       { to: '/comparison', label: 'Comparison', icon: GitCompare },
       { to: '/covenants', label: 'Covenants', icon: Shield },
     ],

@@ -107,6 +107,33 @@ export interface Covenant {
   createdAt: Date;
 }
 
+export interface OriginatorAnalysis {
+  id: string;
+  originatorId: string;
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  outlook: string;
+  keyMetrics: { label: string; value: string; trend: 'improving' | 'stable' | 'deteriorating' }[];
+  creditAssessment: string;
+  recommendedActions: string[];
+  generatedAt: Date;
+}
+
+export interface DocumentReport {
+  id: string;
+  originatorId?: string;
+  fileName: string;
+  summary: string;
+  reportType: string;
+  reportPeriod: string | null;
+  keyFindings: string[];
+  riskFactors: string[];
+  positiveIndicators: string[];
+  metricsExtracted: number;
+  uploadedAt: Date;
+}
+
 export interface SortConfig {
   key: string;
   direction: 'asc' | 'desc';

@@ -1,11 +1,13 @@
 import Dexie, { type Table } from 'dexie';
-import type { Originator, FinancialMetric, Headline, Covenant } from '../types';
+import type { Originator, FinancialMetric, Headline, Covenant, OriginatorAnalysis, DocumentReport } from '../types';
 
 export class OriginatorDatabase extends Dexie {
   originators!: Table<Originator, string>;
   metrics!: Table<FinancialMetric, string>;
   headlines!: Table<Headline, string>;
   covenants!: Table<Covenant, string>;
+  analyses!: Table<OriginatorAnalysis, string>;
+  documents!: Table<DocumentReport, string>;
 
   constructor() {
     super('OriginatorDashboard');
@@ -14,6 +16,14 @@ export class OriginatorDatabase extends Dexie {
       metrics: 'id, originatorId, metricType, period, date, [originatorId+metricType], [originatorId+period]',
       headlines: 'id, originatorId, date, category, impact, createdAt',
       covenants: 'id, originatorId, name, type, ragStatus, createdAt',
+    });
+    this.version(3).stores({
+      originators: 'id, name, sector, region, createdAt',
+      metrics: 'id, originatorId, metricType, period, date, [originatorId+metricType], [originatorId+period]',
+      headlines: 'id, originatorId, date, category, impact, createdAt',
+      covenants: 'id, originatorId, name, type, ragStatus, createdAt',
+      analyses: 'id, originatorId, generatedAt',
+      documents: 'id, originatorId, uploadedAt',
     });
   }
 }

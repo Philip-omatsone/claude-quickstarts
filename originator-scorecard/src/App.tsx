@@ -7,6 +7,7 @@ import DataEntryPage from './pages/DataEntryPage';
 import HeadlinesPage from './pages/HeadlinesPage';
 import ComparisonPage from './pages/ComparisonPage';
 import CovenantsPage from './pages/CovenantsPage';
+import CompanyOverviewPage from './pages/CompanyOverviewPage';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/metrics" element={<MetricsPage />} />
             <Route path="/data-entry" element={<DataEntryPage />} />
             <Route path="/headlines" element={<HeadlinesPage />} />
+            <Route path="/overview" element={<CompanyOverviewPage />} />
             <Route path="/comparison" element={<ComparisonPage />} />
             <Route path="/covenants" element={<CovenantsPage />} />
           </Route>
