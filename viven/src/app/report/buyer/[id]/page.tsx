@@ -27,8 +27,10 @@ import {
   CheckCircle2,
   XCircle,
   Info,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
-import { BuyerReport } from "@/lib/api/types";
+import { BuyerReport, EnrichedComparable } from "@/lib/api/types";
 import { ReportSection } from "@/components/report/ReportSection";
 import { RiskBadge } from "@/components/report/RiskBadge";
 import { PriceChart } from "@/components/report/PriceChart";
@@ -74,27 +76,71 @@ function ScoreRing({ score, size = 96 }: { score: number; size?: number }) {
   );
 }
 
-function VibeBar({ label, score, icon: Icon }: { label: string; score: number; icon: React.ElementType }) {
+function VibeBar({ label, score, icon: Icon, detail }: {
+  label: string;
+  score: number;
+  icon: React.ElementType;
+  detail?: { methodology: string; dataPoints: string[] };
+}) {
   return (
-    <div className="flex items-center gap-3">
-      <Icon className="w-4 h-4 text-muted shrink-0" />
-      <span className="text-sm text-muted w-28 shrink-0">{label}</span>
-      <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-primary transition-all"
-          style={{ width: `${score * 10}%` }}
-        />
+    <div>
+      <div className="flex items-center gap-3">
+        <Icon className="w-4 h-4 text-muted shrink-0" />
+        <span className="text-sm text-muted w-28 shrink-0">{label}</span>
+        <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${score * 10}%` }}
+          />
+        </div>
+        <span className="text-sm font-semibold w-8 text-right">{score}/10</span>
       </div>
-      <span className="text-sm font-semibold w-8 text-right">{score}/10</span>
+      {detail && detail.dataPoints.length > 0 && (
+        <p className="text-[11px] text-muted ml-7 mt-0.5 pl-0.5">
+          {detail.dataPoints.join(" · ")}
+        </p>
+      )}
     </div>
   );
 }
 
 function InsightBox({ text }: { text: string }) {
+  if (!text) return null;
   return (
     <div className="bg-primary-light border border-primary/20 rounded-xl p-4 flex gap-3 mt-4">
       <Sparkles className="w-5 h-5 text-primary shrink-0 mt-0.5" />
       <p className="text-sm text-foreground">{text}</p>
+    </div>
+  );
+}
+
+function SourceAttribution({ sources }: { sources: string[] }) {
+  return (
+    <div className="text-[11px] text-gray-400 mt-3 pt-2 border-t border-gray-100">
+      Source: {sources.join(" · ")}
+    </div>
+  );
+}
+
+function EnrichedCompRow({ comp }: { comp: EnrichedComparable }) {
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-border last:border-0 text-sm">
+      <div className="flex-1 min-w-0">
+        <p className="font-medium truncate">{comp.address}</p>
+        <div className="flex gap-2 text-xs text-muted mt-0.5 flex-wrap">
+          <span>{new Date(comp.date).toLocaleDateString("en-GB")}</span>
+          {comp.propertyType && <span>{comp.propertyType}</span>}
+          {comp.bedrooms && <span>{comp.bedrooms} bed</span>}
+          {comp.floorAreaSqm && <span>{comp.floorAreaSqm}m&sup2;</span>}
+          <span>{comp.tenure}</span>
+        </div>
+      </div>
+      <div className="text-right shrink-0 ml-4">
+        <p className="font-semibold">{formatPrice(comp.price)}</p>
+        {comp.pricePerSqft && (
+          <p className="text-xs text-muted">&pound;{comp.pricePerSqft}/sqft</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -104,6 +150,7 @@ export default function BuyerReportPage() {
   const { id } = useParams();
   const [report, setReport] = useState<BuyerReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showMethodology, setShowMethodology] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem(`report_${id}`);
@@ -151,6 +198,9 @@ export default function BuyerReportPage() {
   const planning = report.riskAssessment.planning;
   const verdict = report.verdict;
   const vibeScores = report.vibeScores;
+  const insights = report.insights;
+  const valuation = priceHistory?.valuation;
+  const enrichedComps = priceHistory?.enrichedComparables;
   const commuteMin = transport?.commuteToCenter?.[0]?.durationMinutes;
 
   return (
@@ -190,7 +240,6 @@ export default function BuyerReportPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-8">
-            {/* Score ring */}
             <div className="relative shrink-0">
               <ScoreRing score={verdict.score} size={120} />
               <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -202,7 +251,6 @@ export default function BuyerReportPage() {
             </div>
 
             <div className="flex-1">
-              {/* Pills */}
               <div className="flex flex-wrap gap-2 mb-3">
                 {verdict.pills.map((pill, i) => (
                   <span
@@ -222,8 +270,6 @@ export default function BuyerReportPage() {
                   </span>
                 ))}
               </div>
-
-              {/* Summary */}
               <p className="text-sm text-muted leading-relaxed">{verdict.summary}</p>
             </div>
           </div>
@@ -235,10 +281,17 @@ export default function BuyerReportPage() {
         <div className="bg-white rounded-xl border border-border p-4 text-center">
           <p className="text-xs text-muted">Est. Value</p>
           <p className="text-lg font-heading font-bold mt-1">
-            {priceHistory && priceHistory.estimatedValueRange.high > 0
+            {valuation && valuation.estimatedValue > 0
+              ? formatPrice(valuation.estimatedValue)
+              : priceHistory && priceHistory.estimatedValueRange.high > 0
               ? formatPrice(Math.round((priceHistory.estimatedValueRange.low + priceHistory.estimatedValueRange.high) / 2))
               : "N/A"}
           </p>
+          {valuation && (
+            <p className="text-[10px] text-muted mt-0.5">
+              {valuation.confidence} confidence
+            </p>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
           <p className="text-xs text-muted">Per sq ft</p>
@@ -322,20 +375,26 @@ export default function BuyerReportPage() {
           {!epc && !lastSale && (
             <div className="mt-4 bg-background rounded-xl p-4">
               <p className="text-muted text-sm">
-                No EPC or sale records found for this specific property.
+                No EPC record found — the property may predate the requirement or not yet have a certificate.
                 {priceHistory && priceHistory.transactions.length > 0 && (
                   <> See price history below for area transaction data.</>
                 )}
               </p>
             </div>
           )}
+
+          {insights?.propertyOverview && (
+            <InsightBox text={insights.propertyOverview} />
+          )}
+
+          <SourceAttribution sources={["EPC Open Data API", "Land Registry Price Paid Data"]} />
         </ReportSection>
 
-        {/* ──────── 2. PRICE HISTORY ──────── */}
+        {/* ──────── 2. PRICE HISTORY & VALUATION ──────── */}
         <ReportSection
           icon={TrendingUp}
           title="Price History & Valuation"
-          subtitle="Transaction history and price trends"
+          subtitle="Transaction history and estimated value"
           unavailable={!priceHistory}
         >
           {priceHistory && (
@@ -363,7 +422,46 @@ export default function BuyerReportPage() {
                 </div>
               </div>
 
-              {priceHistory.pricePerSqFt > 0 && priceHistory.areaAverage > 0 && epc && epc.totalFloorArea > 0 && (
+              {/* Valuation methodology expandable */}
+              {valuation && valuation.estimatedValue > 0 && (
+                <div className="mt-4">
+                  <button
+                    onClick={() => setShowMethodology(!showMethodology)}
+                    className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+                  >
+                    {showMethodology ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    How we calculated this
+                  </button>
+                  {showMethodology && (
+                    <div className="mt-2 bg-background rounded-xl p-4 text-sm space-y-1.5">
+                      {valuation.hpiAdjustedValue && (
+                        <p className="text-muted">
+                          HPI-adjusted from last sale: <span className="font-medium text-foreground">{formatPrice(valuation.hpiAdjustedValue)}</span>
+                        </p>
+                      )}
+                      {valuation.compBasedValue && (
+                        <p className="text-muted">
+                          Based on comparable sales: <span className="font-medium text-foreground">{formatPrice(valuation.compBasedValue)}</span>
+                        </p>
+                      )}
+                      <p className="text-muted">
+                        Blended estimate: <span className="font-medium text-foreground">{formatPrice(valuation.estimatedValue)}</span>
+                        {valuation.hpiAdjustedValue && valuation.compBasedValue && " (40% HPI + 60% comps)"}
+                      </p>
+                      <p className="text-muted">
+                        Confidence: <span className="font-medium text-foreground">{valuation.confidence}</span>
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-2">
+                        Source: Nationwide HPI, Land Registry Price Paid Data
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {insights?.priceHistory ? (
+                <InsightBox text={insights.priceHistory} />
+              ) : priceHistory.pricePerSqFt > 0 && priceHistory.areaAverage > 0 && epc && epc.totalFloorArea > 0 && (
                 <InsightBox
                   text={`At ${formatPrice(priceHistory.pricePerSqFt)}/sq ft, this property ${
                     priceHistory.pricePerSqFt > Math.round(priceHistory.areaAverage / (epc.totalFloorArea * 10.764))
@@ -375,12 +473,24 @@ export default function BuyerReportPage() {
                 />
               )}
 
-              {priceHistory.comparableSales.length > 0 && (
+              {/* Enriched Comparable Sales */}
+              {enrichedComps && enrichedComps.street.length > 0 ? (
+                <div className="mt-6">
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider mb-3">
+                    Comparable Sales — Same Street ({enrichedComps.street.length})
+                  </h3>
+                  <div>
+                    {enrichedComps.street.slice(0, 8).map((comp, i) => (
+                      <EnrichedCompRow key={i} comp={comp} />
+                    ))}
+                  </div>
+                </div>
+              ) : priceHistory.comparableSales.length > 0 && (
                 <div className="mt-6">
                   <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider mb-3">
                     Comparable Sales in Area
                   </h3>
-                  <div className="space-y-2">
+                  <div>
                     {priceHistory.comparableSales.slice(0, 5).map((sale, i) => (
                       <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                         <div>
@@ -395,6 +505,8 @@ export default function BuyerReportPage() {
                   </div>
                 </div>
               )}
+
+              <SourceAttribution sources={["Land Registry Price Paid Data", "Nationwide HPI"]} />
             </>
           )}
         </ReportSection>
@@ -413,6 +525,7 @@ export default function BuyerReportPage() {
                   <div className="flex justify-between items-center"><span className="text-muted">Surface Water</span><RiskBadge level={flood.surfaceWater} /></div>
                   <div className="flex justify-between items-center"><span className="text-muted">Flood Zone</span><span className="font-medium">Zone {flood.floodZone}</span></div>
                   <div className="flex justify-between items-center"><span className="text-muted">Reservoir</span><span className="font-medium">{flood.reservoir ? "Yes" : "No"}</span></div>
+                  <p className="text-[11px] text-gray-400 pt-1">Source: Environment Agency Flood Map</p>
                 </div>
               ) : <p className="text-sm text-muted">Data unavailable</p>}
             </div>
@@ -428,12 +541,15 @@ export default function BuyerReportPage() {
                   <div className="flex justify-between items-center"><span className="text-muted">Shrink-Swell</span><span className="font-medium">{geology.shrinkSwellClass}</span></div>
                   <div className="flex justify-between items-center"><span className="text-muted">Radon</span><span className="font-medium">{geology.radonLevel}</span></div>
                   <div className="flex justify-between items-center"><span className="text-muted">Bedrock</span><span className="font-medium text-xs">{geology.bedrockType}</span></div>
+                  <p className="text-[11px] text-gray-400 pt-1">Source: BGS GeoSure, UKHSA Radon Atlas</p>
                 </div>
               ) : <p className="text-sm text-muted">Data unavailable</p>}
             </div>
           </div>
 
-          {flood && flood.floodZone === "1" && flood.surfaceWater !== "high" && geology?.subsidenceRisk !== "high" && (
+          {insights?.riskAssessment ? (
+            <InsightBox text={insights.riskAssessment} />
+          ) : flood && flood.floodZone === "1" && flood.surfaceWater !== "high" && geology?.subsidenceRisk !== "high" && (
             <InsightBox text="This property sits in Flood Zone 1 with low surface water risk and stable ground conditions — a positive sign for long-term structural integrity and insurance costs." />
           )}
 
@@ -448,7 +564,7 @@ export default function BuyerReportPage() {
                   <div key={i} className="bg-background rounded-xl p-4 text-sm">
                     <div className="flex justify-between items-start">
                       <p className="font-medium">{app.description || app.reference}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ml-2 ${
                         app.status === "Approved" ? "bg-green-50 text-green-700" :
                         app.status === "Refused" ? "bg-red-50 text-red-700" :
                         "bg-amber-50 text-amber-700"
@@ -458,6 +574,7 @@ export default function BuyerReportPage() {
                   </div>
                 ))}
               </div>
+              <p className="text-[11px] text-gray-400 mt-2">Source: PlanIt (planit.org.uk)</p>
             </div>
           )}
         </ReportSection>
@@ -475,8 +592,12 @@ export default function BuyerReportPage() {
                   crime.comparisonToAverage === "above" ? "bg-red-50 text-red-700" :
                   "bg-amber-50 text-amber-700"
                 }`}>
-                  {crime.comparisonToAverage === "below" ? "Below Average" :
-                   crime.comparisonToAverage === "above" ? "Above Average" : "Average"}
+                  {crime.comparisonToAverage === "below"
+                    ? `Lower than average${crime.boroughName ? ` for ${crime.boroughName}` : ""}`
+                    : crime.comparisonToAverage === "above"
+                    ? `Higher than average${crime.boroughName ? ` for ${crime.boroughName}` : ""}`
+                    : `Around average${crime.boroughName ? ` for ${crime.boroughName}` : ""}`
+                  }
                 </span>
               </div>
               <CrimeCategoryChart crime={crime} />
@@ -484,9 +605,11 @@ export default function BuyerReportPage() {
                 <h4 className="text-xs font-semibold text-muted uppercase mb-2">12-Month Trend</h4>
                 <CrimeTrendChart crime={crime} />
               </div>
-              {crime.comparisonToAverage === "below" && (
-                <InsightBox text={`Crime levels in this area are below the local average with ${crime.totalCrimes} reported incidents in the most recent month. This is a positive indicator for residential safety.`} />
-              )}
+              <SourceAttribution sources={[
+                "Police UK (data.police.uk)",
+                crime.dateRange ? `Data covers ${crime.dateRange}` : "",
+                crime.boroughName ? `Comparison: ${crime.boroughName}` : "",
+              ].filter(Boolean)} />
             </div>
           )}
 
@@ -522,6 +645,7 @@ export default function BuyerReportPage() {
                   </div>
                 ))}
               </div>
+              <SourceAttribution sources={["DfE Get Information About Schools (GIAS)"]} />
             </div>
           )}
 
@@ -560,6 +684,7 @@ export default function BuyerReportPage() {
                   </p>
                 </div>
               )}
+              <SourceAttribution sources={["TfL Journey Planner API"]} />
             </div>
           )}
 
@@ -584,6 +709,7 @@ export default function BuyerReportPage() {
                   <p className="text-lg font-bold mt-1">{broadband.ultraFastAvailability}%</p>
                 </div>
               </div>
+              <SourceAttribution sources={["Ofcom Connected Nations"]} />
             </div>
           )}
 
@@ -618,25 +744,31 @@ export default function BuyerReportPage() {
                   </div>
                 </div>
               </div>
+              <SourceAttribution sources={["ONS Census 2021", "MHCLG Index of Multiple Deprivation 2019"]} />
             </div>
+          )}
+
+          {insights?.areaNeighbourhood && (
+            <InsightBox text={insights.areaNeighbourhood} />
           )}
         </ReportSection>
 
         {/* ──────── 5. NEIGHBOURHOOD VIBE ──────── */}
         {vibeScores && (
           <ReportSection icon={Sparkles} title="Neighbourhood Vibe" subtitle="What it feels like to live here">
-            <div className="space-y-3">
-              <VibeBar label="Walkability" score={vibeScores.walkability} icon={MapPin} />
-              <VibeBar label="Green Space" score={vibeScores.greenSpace} icon={TreePine} />
-              <VibeBar label="Food & Drink" score={vibeScores.foodAndDrink} icon={UtensilsCrossed} />
-              <VibeBar label="Family Friendly" score={vibeScores.familyFriendly} icon={Baby} />
-              <VibeBar label="Nightlife" score={vibeScores.nightlife} icon={Moon} />
-              <VibeBar label="Peace & Quiet" score={vibeScores.peaceAndQuiet} icon={Volume2} />
+            <div className="space-y-4">
+              <VibeBar label="Walkability" score={vibeScores.walkability} icon={MapPin} detail={vibeScores.details?.walkability} />
+              <VibeBar label="Green Space" score={vibeScores.greenSpace} icon={TreePine} detail={vibeScores.details?.greenSpace} />
+              <VibeBar label="Food & Drink" score={vibeScores.foodAndDrink} icon={UtensilsCrossed} detail={vibeScores.details?.foodAndDrink} />
+              <VibeBar label="Family Friendly" score={vibeScores.familyFriendly} icon={Baby} detail={vibeScores.details?.familyFriendly} />
+              <VibeBar label="Nightlife" score={vibeScores.nightlife} icon={Moon} detail={vibeScores.details?.nightlife} />
+              <VibeBar label="Peace & Quiet" score={vibeScores.peaceAndQuiet} icon={Volume2} detail={vibeScores.details?.peaceAndQuiet} />
             </div>
             <div className="mt-4 bg-background rounded-xl p-4 flex items-center justify-between">
               <span className="text-sm text-muted">Overall Vibe Score</span>
               <span className="text-2xl font-heading font-bold text-primary">{vibeScores.overall}/10</span>
             </div>
+            <SourceAttribution sources={["OpenStreetMap via Overpass API", "Police UK", "DEFRA Air Quality"]} />
           </ReportSection>
         )}
 
@@ -669,6 +801,7 @@ export default function BuyerReportPage() {
                   )}
                 </div>
               </div>
+              <SourceAttribution sources={["DEFRA Modelled Background Pollution Data"]} />
             </div>
           )}
         </ReportSection>
@@ -678,7 +811,7 @@ export default function BuyerReportPage() {
       <div className="mt-8 text-center text-xs text-muted">
         <p>
           Data sourced from: Land Registry, EPC Open Data, Environment Agency,
-          Police UK, GIAS, TfL, Ofcom, ONS, BGS, DEFRA, PlanIt, OpenStreetMap
+          Police UK, GIAS, TfL, Ofcom, ONS, BGS, DEFRA, PlanIt, OpenStreetMap, Nationwide HPI
         </p>
         <p className="mt-1">
           Report generated on {new Date(report.generatedAt).toLocaleDateString("en-GB")}.

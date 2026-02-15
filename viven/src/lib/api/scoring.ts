@@ -10,6 +10,7 @@ import {
   AirQualityData,
   VivenVerdict,
   VibeScores,
+  VibeScoreDetail,
   PriceHistory,
 } from "./types";
 
@@ -158,7 +159,7 @@ export function calculateVivenVerdict(
     totalScore >= 75 ? `A solid buy in ${area}.` :
     totalScore >= 60 ? `A reasonable option in ${area} with some considerations.` :
     totalScore >= 40 ? `Worth investigating further in ${area}, but proceed with caution.` :
-    `Significant concerns in ${area} — thorough due diligence recommended.`;
+    `Significant concerns in ${area} \u2014 thorough due diligence recommended.`;
 
   const parts: string[] = [opening];
 
@@ -192,33 +193,95 @@ export function calculateVibeScores(
   const restaurants = amenities.filter((a) => a.category === "restaurant").length;
   const shops = amenities.filter((a) => a.category === "supermarket").length;
   const gps = amenities.filter((a) => a.category === "gp").length;
-  const gyms = amenities.filter((a) => a.category === "gym").length;
+
+  const nearestStationDist = transport?.nearestStations?.[0]?.distanceKm;
+  const nearestStationName = transport?.nearestStations?.[0]?.name;
 
   // Walkability: based on amenity density + station proximity
-  let walkability = Math.min(10, Math.round((amenities.length / 20) * 10));
-  if (transport?.nearestStations?.length && transport.nearestStations[0].distanceKm < 0.5) {
-    walkability = Math.min(10, walkability + 2);
+  let walkScore = 5;
+  if (amenities.length >= 25) walkScore += 3;
+  else if (amenities.length >= 15) walkScore += 2;
+  else if (amenities.length >= 8) walkScore += 1;
+  else walkScore -= 2;
+
+  if (nearestStationDist !== undefined) {
+    if (nearestStationDist <= 0.4) walkScore += 2;
+    else if (nearestStationDist <= 0.8) walkScore += 1;
+    else if (nearestStationDist > 1.5) walkScore -= 2;
   }
+  const walkability = Math.max(1, Math.min(10, walkScore));
+
+  const walkDataPoints = [
+    `${amenities.length} amenities within 1km`,
+    nearestStationDist !== undefined
+      ? `Nearest station: ${Math.round(nearestStationDist * 1000)}m${nearestStationName ? ` (${nearestStationName})` : ""}`
+      : "No station data",
+  ];
 
   // Green Space
-  const greenSpace = Math.min(10, parks <= 0 ? 2 : parks === 1 ? 5 : parks === 2 ? 7 : parks >= 3 ? 9 : 5);
+  let greenScore = 5;
+  if (parks >= 3) greenScore += 3;
+  else if (parks >= 2) greenScore += 2;
+  else if (parks >= 1) greenScore += 1;
+  else greenScore -= 2;
+
+  const nearestPark = amenities.find((a) => a.category === "park");
+  if (nearestPark) {
+    if (nearestPark.distanceKm <= 0.3) greenScore += 2;
+    else if (nearestPark.distanceKm <= 0.6) greenScore += 1;
+    else if (nearestPark.distanceKm > 1.0) greenScore -= 1;
+  }
+  const greenSpace = Math.max(1, Math.min(10, greenScore));
+
+  const greenDataPoints = [
+    `${parks} parks within 1km`,
+    nearestPark
+      ? `Nearest park: ${Math.round(nearestPark.distanceKm * 1000)}m${nearestPark.name !== "park" ? ` (${nearestPark.name})` : ""}`
+      : "No parks found nearby",
+  ];
 
   // Food & Drink
-  const foodAndDrink = Math.min(10, restaurants > 20 ? 9 : restaurants > 10 ? 7 : restaurants > 5 ? 5 : restaurants > 0 ? 3 : 1);
+  let foodScore = 5;
+  if (restaurants >= 25) foodScore += 4;
+  else if (restaurants >= 15) foodScore += 3;
+  else if (restaurants >= 8) foodScore += 1;
+  else if (restaurants <= 2) foodScore -= 2;
+  const foodAndDrink = Math.max(1, Math.min(10, foodScore));
+
+  const foodDataPoints = [
+    `${restaurants} restaurants, cafes & pubs within 1km`,
+  ];
 
   // Family Friendly
-  const crimeScore = crime?.comparisonToAverage === "below" ? 3 : crime?.comparisonToAverage === "average" ? 2 : 0;
-  const familyFriendly = Math.min(10, Math.round(parks + shops + gps + crimeScore));
+  const crimeBonus = crime?.comparisonToAverage === "below" ? 3 : crime?.comparisonToAverage === "average" ? 2 : 0;
+  const familyRaw = Math.round(parks + shops + gps + crimeBonus);
+  const familyFriendly = Math.max(1, Math.min(10, familyRaw));
+
+  const familyDataPoints = [
+    `${parks} parks, ${shops} shops, ${gps} GPs nearby`,
+    `Crime level: ${crime?.comparisonToAverage || "unknown"}`,
+  ];
 
   // Nightlife
-  const nightlife = Math.min(10, restaurants > 15 ? 8 : restaurants > 8 ? 6 : restaurants > 3 ? 4 : 2);
+  const nightlife = Math.max(1, Math.min(10,
+    restaurants > 15 ? 8 : restaurants > 8 ? 6 : restaurants > 3 ? 4 : 2
+  ));
+
+  const nightlifeDataPoints = [
+    `${restaurants} dining & drinking venues within 1km`,
+  ];
 
   // Peace & Quiet
-  let peaceAndQuiet = 5;
-  if (crime?.comparisonToAverage === "below") peaceAndQuiet += 2;
-  if (airQuality && airQuality.index <= 3) peaceAndQuiet += 2;
-  if (amenities.length < 10) peaceAndQuiet += 1; // Quieter area
-  peaceAndQuiet = Math.min(10, peaceAndQuiet);
+  let peaceScore = 5;
+  if (crime?.comparisonToAverage === "below") peaceScore += 2;
+  if (airQuality && airQuality.index <= 3) peaceScore += 2;
+  if (amenities.length < 10) peaceScore += 1;
+  const peaceAndQuiet = Math.max(1, Math.min(10, peaceScore));
+
+  const peaceDataPoints = [
+    `Crime: ${crime?.comparisonToAverage || "unknown"} average`,
+    airQuality ? `Air quality: ${airQuality.band} (DAQI ${airQuality.index})` : "No air quality data",
+  ];
 
   const overall = Math.round(
     (walkability + greenSpace + foodAndDrink + familyFriendly + nightlife + peaceAndQuiet) / 6
@@ -232,5 +295,37 @@ export function calculateVibeScores(
     familyFriendly,
     nightlife,
     peaceAndQuiet,
+    details: {
+      walkability: {
+        score: walkability,
+        methodology: "Based on number of amenities within 1km and distance to nearest station",
+        dataPoints: walkDataPoints,
+      },
+      greenSpace: {
+        score: greenSpace,
+        methodology: "Based on number of parks within 1km and distance to nearest park",
+        dataPoints: greenDataPoints,
+      },
+      foodAndDrink: {
+        score: foodAndDrink,
+        methodology: "Based on restaurants, cafes, pubs, and food shops within 1km",
+        dataPoints: foodDataPoints,
+      },
+      familyFriendly: {
+        score: familyFriendly,
+        methodology: "Based on parks, shops, GPs nearby and local crime level",
+        dataPoints: familyDataPoints,
+      },
+      nightlife: {
+        score: nightlife,
+        methodology: "Based on restaurants, bars, and pubs within 1km",
+        dataPoints: nightlifeDataPoints,
+      },
+      peaceAndQuiet: {
+        score: peaceAndQuiet,
+        methodology: "Based on crime level, air quality, and amenity density (inverse)",
+        dataPoints: peaceDataPoints,
+      },
+    },
   };
 }

@@ -34,15 +34,32 @@ const CATEGORY_LABELS: Record<string, string> = {
   "violence-and-sexual-offences": "Violence/Sexual",
 };
 
-const BAR_COLORS = [
-  "#16A34A", "#22C55E", "#4ADE80", "#86EFAC",
-  "#BBF7D0", "#A3A3A3", "#D4D4D4", "#E5E5E5",
-];
-
 function formatCategory(raw: string): string {
   return CATEGORY_LABELS[raw] || raw
     .replace(/-/g, " ")
     .replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
+// Colour bars by severity relative to borough average
+function getCrimeBarColour(count: number, boroughAvg: number | undefined): string {
+  if (!boroughAvg || boroughAvg === 0) {
+    // No comparison data — graduated grey to red based on position
+    return "#6B7280";
+  }
+  const ratio = count / boroughAvg;
+  if (ratio <= 0.7) return "#22c55e";  // Green — well below average
+  if (ratio <= 1.0) return "#f59e0b";  // Amber — around average
+  if (ratio <= 1.5) return "#f97316";  // Orange — above average
+  return "#ef4444";                     // Red — significantly above average
+}
+
+function getComparisonIndicator(count: number, boroughAvg: number | undefined): string {
+  if (!boroughAvg || boroughAvg === 0) return "";
+  const ratio = count / boroughAvg;
+  const pctDiff = Math.abs(Math.round((ratio - 1) * 100));
+  if (ratio <= 0.7) return `\u25BC ${pctDiff}% below`;
+  if (ratio <= 1.15) return `\u2192 Around avg`;
+  return `\u25B2 ${pctDiff}% above`;
 }
 
 export function CrimeCategoryChart({ crime }: CrimeChartProps) {
@@ -51,6 +68,7 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
       category: formatCategory(category),
       rawCategory: category,
       count,
+      boroughAvg: crime.boroughAverages?.[category],
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
@@ -63,11 +81,18 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
     );
   }
 
+  const hasBoroughData = data.some((d) => d.boroughAvg && d.boroughAvg > 0);
+
   return (
     <div className="space-y-2">
-      {data.map((item, i) => {
+      <p className="text-xs text-muted mb-3">
+        Incidents in most recent month{crime.boroughName ? ` | Compared to ${crime.boroughName} average` : ""}
+      </p>
+      {data.map((item) => {
         const maxCount = data[0].count;
         const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+        const barColour = getCrimeBarColour(item.count, item.boroughAvg);
+        const comparison = getComparisonIndicator(item.count, item.boroughAvg);
         return (
           <div key={item.rawCategory} className="flex items-center gap-3">
             <span className="text-xs text-muted w-28 text-right shrink-0 truncate">
@@ -78,13 +103,18 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
                 className="h-full rounded-full transition-all"
                 style={{
                   width: `${Math.max(pct, 3)}%`,
-                  backgroundColor: BAR_COLORS[i] || BAR_COLORS[BAR_COLORS.length - 1],
+                  backgroundColor: barColour,
                 }}
               />
             </div>
-            <span className="text-xs font-medium text-foreground w-8 text-right">
+            <span className="text-xs font-medium text-foreground w-8 text-right shrink-0">
               {item.count}
             </span>
+            {hasBoroughData && (
+              <span className="text-[10px] text-muted w-24 shrink-0 truncate">
+                {comparison}
+              </span>
+            )}
           </div>
         );
       })}
@@ -139,9 +169,9 @@ export function CrimeTrendChart({ crime }: CrimeChartProps) {
           <Line
             type="monotone"
             dataKey="count"
-            stroke="#16A34A"
+            stroke="#6366f1"
             strokeWidth={2}
-            dot={{ r: 3, fill: "#16A34A" }}
+            dot={{ r: 3, fill: "#6366f1" }}
             activeDot={{ r: 5 }}
           />
         </LineChart>

@@ -1,7 +1,7 @@
 import { BuyerReport, RentalReport, GeocodeResult } from "./types";
 import { calculateVivenVerdict, calculateVibeScores } from "./scoring";
 import { getTransactionHistory } from "./sources/land-registry";
-import { getEPCRating } from "./sources/epc";
+import { getEPCRating, searchEPCByAddress } from "./sources/epc";
 import { getFloodRisk } from "./sources/environment-agency";
 import { getCrimeData } from "./sources/police-api";
 import { getNearbySchools } from "./sources/ofsted";
@@ -12,6 +12,8 @@ import { getGeologyData } from "./sources/bgs-geology";
 import { getPlanningApplications } from "./sources/planning-api";
 import { getAirQuality } from "./sources/defra";
 import { getNearbyAmenities } from "./sources/overpass-osm";
+import { estimateValue, enrichComparableWithEPC } from "../valuation/estimate";
+import { generateAllInsights } from "../insights/generate";
 
 function generateId(): string {
   return `rpt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -54,15 +56,77 @@ export async function generateBuyerReport(
 
   // Calculate price per sqft if we have both EPC and transaction data
   const priceHistory = transactionRes.data;
-  if (priceHistory && epcRes.data && epcRes.data.totalFloorArea > 0) {
+  const epc = epcRes.data;
+  const floorAreaSqft =
+    epc && epc.totalFloorArea > 0
+      ? epc.totalFloorArea * 10.764
+      : null;
+
+  if (priceHistory && epc && floorAreaSqft) {
     const latestPrice =
       priceHistory.transactions.length > 0
         ? priceHistory.transactions[0].price
         : 0;
     if (latestPrice > 0) {
-      const sqft = epcRes.data.totalFloorArea * 10.764; // m² to sq ft
-      priceHistory.pricePerSqFt = Math.round(latestPrice / sqft);
+      priceHistory.pricePerSqFt = Math.round(latestPrice / floorAreaSqft);
     }
+  }
+
+  // Enrich comparables with EPC data (best effort — don't block report)
+  if (priceHistory) {
+    const streetComps = priceHistory.comparableSales.slice(0, 10);
+    const enriched = await Promise.all(
+      streetComps.map(async (comp) => {
+        // Try to look up EPC for each comparable
+        const houseNum = comp.address.match(/^\d+[A-Za-z]?/)?.[0];
+        let compEpc = null;
+        if (houseNum) {
+          try {
+            compEpc = await searchEPCByAddress(postcode, houseNum);
+          } catch {
+            // Non-critical
+          }
+        }
+        return enrichComparableWithEPC(comp, compEpc, "street");
+      })
+    );
+
+    priceHistory.enrichedComparables = {
+      street: enriched,
+      sector: [],
+      outcode: [],
+    };
+  }
+
+  // Calculate valuation
+  const lastSale = priceHistory?.transactions[0] || null;
+  const compsForValuation = (priceHistory?.comparableSales || []).map((c) => ({
+    price: c.price,
+    floorAreaSqft: null as number | null, // Will be enriched where available
+  }));
+
+  // Use enriched comp data if available
+  if (priceHistory?.enrichedComparables?.street) {
+    for (let i = 0; i < compsForValuation.length && i < priceHistory.enrichedComparables.street.length; i++) {
+      compsForValuation[i].floorAreaSqft = priceHistory.enrichedComparables.street[i]?.floorAreaSqft ?? null;
+    }
+  }
+
+  const valuation = await estimateValue(
+    lastSale?.price || null,
+    lastSale?.dateOfTransfer || null,
+    epc?.propertyType || lastSale?.propertyType || "",
+    geocode.region,
+    floorAreaSqft ? Math.round(floorAreaSqft) : null,
+    compsForValuation
+  );
+
+  if (priceHistory) {
+    priceHistory.valuation = valuation;
+    priceHistory.estimatedValueRange = {
+      low: valuation.rangeLow,
+      high: valuation.rangeHigh,
+    };
   }
 
   // Calculate Viven Verdict score
@@ -76,7 +140,7 @@ export async function generateBuyerReport(
       crime: crimeRes.data,
       schools,
       transport: transportRes.data,
-      epc: epcRes.data,
+      epc,
       broadband: broadbandRes.data,
       amenities,
       airQuality: airQualityRes.data,
@@ -85,13 +149,42 @@ export async function generateBuyerReport(
     geocode.admin_district
   );
 
-  // Calculate Vibe Scores
+  // Calculate Vibe Scores with methodology details
   const vibeScores = calculateVibeScores(
     amenities,
     transportRes.data,
     crimeRes.data,
     airQualityRes.data,
   );
+
+  // Generate AI-powered insights (non-blocking)
+  let insights: BuyerReport["insights"] = undefined;
+  try {
+    insights = await generateAllInsights({
+      address: address || postcode,
+      area: geocode.admin_district,
+      propertyType: epc?.propertyType || "",
+      epc: epc
+        ? {
+            rating: epc.currentEnergyRating,
+            score: epc.currentEnergyEfficiency,
+            potentialRating: epc.potentialEnergyRating,
+          }
+        : null,
+      valuation: { estimatedValue: valuation.estimatedValue },
+      lastSalePrice: lastSale?.price || null,
+      lastSaleDate: lastSale?.dateOfTransfer || null,
+      flood: floodRes.data as unknown as Record<string, unknown>,
+      geology: geologyRes.data as unknown as Record<string, unknown>,
+      crimeLevel: crimeRes.data?.comparisonToAverage || null,
+      broadbandSpeed: broadbandRes.data?.averageDownload || null,
+      nearestSchools: schools.slice(0, 3),
+      commuteTime:
+        transportRes.data?.commuteToCenter?.[0]?.durationMinutes || null,
+    });
+  } catch {
+    // Insights are non-critical — report still works without them
+  }
 
   const report: BuyerReport = {
     id: generateId(),
@@ -102,11 +195,10 @@ export async function generateBuyerReport(
     verdict,
     vibeScores,
     propertyOverview: {
-      epc: epcRes.data,
-      lastSale:
-        transactionRes.data?.transactions[0] || null,
+      epc,
+      lastSale,
     },
-    priceHistory: transactionRes.data,
+    priceHistory,
     riskAssessment: {
       flood: floodRes.data,
       geology: geologyRes.data,
@@ -123,6 +215,7 @@ export async function generateBuyerReport(
     environmental: {
       airQuality: airQualityRes.data,
     },
+    insights,
   };
 
   return report;

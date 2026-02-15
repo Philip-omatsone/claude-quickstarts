@@ -9,15 +9,53 @@ export async function getNearbyAmenities(
   radiusMeters: number = 1000
 ): Promise<DataSourceResponse<Amenity[]>> {
   try {
-    // Overpass QL query for nearby amenities
+    // IMPORTANT: Use `nwr` (node, way, relation) not just `node`
+    // Many POIs in OSM are mapped as ways (building outlines) not point nodes.
+    // Using just `node` will miss most of them.
     const query = `
-      [out:json][timeout:25];
+      [out:json][timeout:15];
       (
-        node["amenity"~"supermarket|pharmacy|doctors|hospital|school|restaurant|cafe|gym|pub"](around:${radiusMeters},${latitude},${longitude});
-        node["shop"="supermarket"](around:${radiusMeters},${latitude},${longitude});
-        node["leisure"~"park|garden|playground|sports_centre"](around:${radiusMeters},${latitude},${longitude});
+        // Supermarkets and grocery
+        nwr["shop"="supermarket"](around:${radiusMeters},${latitude},${longitude});
+        nwr["shop"="convenience"](around:${radiusMeters},${latitude},${longitude});
+        nwr["shop"="grocery"](around:${radiusMeters},${latitude},${longitude});
+
+        // Food & drink
+        nwr["amenity"="restaurant"](around:${radiusMeters},${latitude},${longitude});
+        nwr["amenity"="cafe"](around:${radiusMeters},${latitude},${longitude});
+        nwr["amenity"="pub"](around:${radiusMeters},${latitude},${longitude});
+        nwr["amenity"="bar"](around:${radiusMeters},${latitude},${longitude});
+        nwr["amenity"="fast_food"](around:${radiusMeters},${latitude},${longitude});
+
+        // Health
+        nwr["amenity"="doctors"](around:${radiusMeters},${latitude},${longitude});
+        nwr["amenity"="pharmacy"](around:${radiusMeters},${latitude},${longitude});
+        nwr["amenity"="dentist"](around:${radiusMeters},${latitude},${longitude});
+        nwr["amenity"="hospital"](around:2000,${latitude},${longitude});
+
+        // Green space
+        nwr["leisure"="park"](around:${radiusMeters},${latitude},${longitude});
+        nwr["leisure"="garden"](around:${radiusMeters},${latitude},${longitude});
+        nwr["leisure"="nature_reserve"](around:2000,${latitude},${longitude});
+        nwr["leisure"="playground"](around:${radiusMeters},${latitude},${longitude});
+
+        // Education
+        nwr["amenity"="school"](around:${radiusMeters},${latitude},${longitude});
+        nwr["amenity"="library"](around:${radiusMeters},${latitude},${longitude});
+
+        // Fitness
+        nwr["leisure"="fitness_centre"](around:${radiusMeters},${latitude},${longitude});
+        nwr["leisure"="sports_centre"](around:${radiusMeters},${latitude},${longitude});
+        nwr["amenity"="gym"](around:${radiusMeters},${latitude},${longitude});
+
+        // Shopping (general)
+        nwr["shop"="general"](around:${radiusMeters},${latitude},${longitude});
+        nwr["shop"="bakery"](around:${radiusMeters},${latitude},${longitude});
+        nwr["shop"="butcher"](around:${radiusMeters},${latitude},${longitude});
+        nwr["shop"="greengrocer"](around:${radiusMeters},${latitude},${longitude});
+        nwr["shop"="deli"](around:${radiusMeters},${latitude},${longitude});
       );
-      out body;
+      out center;
     `;
 
     const res = await fetch(OVERPASS_URL, {
@@ -37,18 +75,22 @@ export async function getNearbyAmenities(
     const amenities: Amenity[] = elements.map(
       (el: {
         tags?: Record<string, string>;
-        lat: number;
-        lon: number;
+        lat?: number;
+        lon?: number;
+        center?: { lat: number; lon: number };
       }) => {
         const tags = el.tags || {};
         const category = mapCategory(
           tags.amenity || tags.shop || tags.leisure || ""
         );
+        // For ways/relations, Overpass returns center coords via `out center`
+        const elLat = el.lat ?? el.center?.lat ?? latitude;
+        const elLon = el.lon ?? el.center?.lon ?? longitude;
         const distance = haversineDistance(
           latitude,
           longitude,
-          el.lat,
-          el.lon
+          elLat,
+          elLon
         );
 
         return {
@@ -56,17 +98,26 @@ export async function getNearbyAmenities(
           type: tags.amenity || tags.shop || tags.leisure || "unknown",
           category,
           distanceKm: Math.round(distance * 100) / 100,
-          latitude: el.lat,
-          longitude: el.lon,
+          latitude: elLat,
+          longitude: elLon,
         };
       }
     );
 
+    // Deduplicate by name + category (ways and nodes can overlap)
+    const seen = new Set<string>();
+    const deduped = amenities.filter((a) => {
+      const key = `${a.name.toLowerCase()}-${a.category}-${a.distanceKm.toFixed(2)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     // Sort by distance
-    amenities.sort((a, b) => a.distanceKm - b.distanceKm);
+    deduped.sort((a, b) => a.distanceKm - b.distanceKm);
 
     return {
-      data: amenities,
+      data: deduped,
       cached: false,
       fetchedAt: new Date().toISOString(),
     };
@@ -85,21 +136,33 @@ function mapCategory(
 ): "supermarket" | "gp" | "pharmacy" | "park" | "restaurant" | "gym" | "other" {
   switch (type) {
     case "supermarket":
+    case "convenience":
+    case "grocery":
+    case "general":
       return "supermarket";
     case "doctors":
     case "hospital":
+    case "dentist":
       return "gp";
     case "pharmacy":
       return "pharmacy";
     case "park":
     case "garden":
     case "playground":
+    case "nature_reserve":
       return "park";
     case "restaurant":
     case "cafe":
     case "pub":
+    case "bar":
+    case "fast_food":
+    case "bakery":
+    case "butcher":
+    case "greengrocer":
+    case "deli":
       return "restaurant";
     case "gym":
+    case "fitness_centre":
     case "sports_centre":
       return "gym";
     default:

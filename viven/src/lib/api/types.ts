@@ -35,6 +35,37 @@ export interface PriceHistory {
   areaAveragePricePerSqFt: number;
   estimatedValueRange: { low: number; high: number };
   comparableSales: PropertyTransaction[];
+  valuation?: ValuationResult;
+  enrichedComparables?: {
+    street: EnrichedComparable[];
+    sector: EnrichedComparable[];
+    outcode: EnrichedComparable[];
+  };
+}
+
+// Enriched comparable sales with EPC data
+export interface EnrichedComparable {
+  address: string;
+  price: number;
+  date: string;
+  propertyType: string;
+  bedrooms: number | null;
+  floorAreaSqm: number | null;
+  floorAreaSqft: number | null;
+  pricePerSqft: number | null;
+  tenure: string;
+  distance: "street" | "sector" | "outcode";
+}
+
+// Valuation result from HPI + comp hybrid
+export interface ValuationResult {
+  estimatedValue: number;
+  rangeLow: number;
+  rangeHigh: number;
+  hpiAdjustedValue: number | null;
+  compBasedValue: number | null;
+  methodology: string;
+  confidence: "High" | "Medium" | "Low";
 }
 
 // EPC types
@@ -75,6 +106,9 @@ export interface CrimeData {
   crimesByCategory: Record<string, number>;
   monthlyTrend: { month: string; count: number }[];
   comparisonToAverage: "below" | "average" | "above";
+  boroughAverages?: Record<string, number>;
+  boroughName?: string;
+  dateRange?: string;
 }
 
 // School data
@@ -177,6 +211,12 @@ export interface VivenVerdict {
 }
 
 // Vibe Scores
+export interface VibeScoreDetail {
+  score: number;
+  methodology: string;
+  dataPoints: string[];
+}
+
 export interface VibeScores {
   overall: number;
   walkability: number;
@@ -185,6 +225,14 @@ export interface VibeScores {
   familyFriendly: number;
   nightlife: number;
   peaceAndQuiet: number;
+  details?: {
+    walkability: VibeScoreDetail;
+    greenSpace: VibeScoreDetail;
+    foodAndDrink: VibeScoreDetail;
+    familyFriendly: VibeScoreDetail;
+    nightlife: VibeScoreDetail;
+    peaceAndQuiet: VibeScoreDetail;
+  };
 }
 
 // Buyer Report (full)
@@ -216,6 +264,12 @@ export interface BuyerReport {
   };
   environmental: {
     airQuality: AirQualityData | null;
+  };
+  insights?: {
+    propertyOverview?: string;
+    priceHistory?: string;
+    riskAssessment?: string;
+    areaNeighbourhood?: string;
   };
 }
 
