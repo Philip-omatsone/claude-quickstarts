@@ -4,24 +4,50 @@
   --color-rag-green: #22c55e;
   --color-rag-amber: #f59e0b;
   --color-rag-red: #ef4444;
-  --color-sidebar: #1e293b;
-  --color-sidebar-hover: #334155;
+  --color-sidebar: #1B2A4A;
+  --color-sidebar-hover: #243656;
   --color-card: #ffffff;
-  --color-background: #f1f5f9;
-  --color-text-primary: #0f172a;
+  --color-background: #f8f9fa;
+  --color-text-primary: #1B2A4A;
   --color-text-secondary: #64748b;
   --color-border: #e2e8f0;
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
+  --color-primary: #1B2A4A;
+  --color-primary-hover: #0f1d36;
+  --color-accent: #00A3A1;
+  --color-accent-hover: #008C8A;
+  --font-family-heading: 'DM Serif Display', Georgia, serif;
+  --font-family-body: 'Source Sans 3', system-ui, -apple-system, sans-serif;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-family-body);
   background-color: var(--color-background);
   color: var(--color-text-primary);
 }
 
 #root {
   min-height: 100vh;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-family-heading);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }

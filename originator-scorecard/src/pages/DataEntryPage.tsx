@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { FileSpreadsheet, FileText, PenLine } from 'lucide-react';
+import { FileSpreadsheet, FileText, PenLine, Grid3X3 } from 'lucide-react';
 import ManualEntryForm from '../components/data-entry/ManualEntryForm';
+import BulkEntryForm from '../components/data-entry/BulkEntryForm';
 import CsvUploader from '../components/data-entry/CsvUploader';
 import PdfUploader from '../components/data-entry/PdfUploader';
 
-type Tab = 'manual' | 'csv' | 'pdf';
+type Tab = 'manual' | 'bulk' | 'csv' | 'pdf';
 
 const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
   { id: 'manual', label: 'Manual Entry', icon: PenLine },
+  { id: 'bulk', label: 'Bulk Entry', icon: Grid3X3 },
   { id: 'csv', label: 'CSV Upload', icon: FileSpreadsheet },
   { id: 'pdf', label: 'PDF Upload', icon: FileText },
 ];
@@ -24,13 +26,14 @@ export default function DataEntryPage() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === tab.id
                 ? 'bg-white text-text-primary shadow-sm'
                 : 'text-text-secondary hover:text-text-primary'
             }`}
+            style={{ fontFamily: 'var(--font-family-body)' }}
           >
-            <tab.icon size={16} />
+            <tab.icon size={14} />
             {tab.label}
           </button>
         ))}
@@ -38,6 +41,7 @@ export default function DataEntryPage() {
 
       <div className="bg-card rounded-lg border border-border p-6">
         {activeTab === 'manual' && <ManualEntryForm />}
+        {activeTab === 'bulk' && <BulkEntryForm />}
         {activeTab === 'csv' && <CsvUploader />}
         {activeTab === 'pdf' && <PdfUploader />}
       </div>

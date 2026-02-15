@@ -7,6 +7,15 @@ const DEFAULT_THRESHOLDS: RagThreshold[] = [
   { metricType: 'bad_debt_ratio', greenMax: 2, amberMin: 2, amberMax: 5 },
   { metricType: 'provision_coverage', greenMin: 100, amberMin: 80, amberMax: 100 },
   { metricType: 'npl_ratio', greenMax: 3, amberMin: 3, amberMax: 5 },
+  { metricType: 'dpd_30', greenMax: 5, amberMin: 5, amberMax: 10 },
+  { metricType: 'dpd_60', greenMax: 3, amberMin: 3, amberMax: 7 },
+  { metricType: 'dpd_90', greenMax: 2, amberMin: 2, amberMax: 5 },
+  { metricType: 'write_off_rate', greenMax: 1, amberMin: 1, amberMax: 3 },
+  { metricType: 'recovery_rate', greenMin: 60, amberMin: 40, amberMax: 60 },
+  { metricType: 'warehouse_utilisation', greenMax: 80, amberMin: 80, amberMax: 95 },
+  { metricType: 'cost_to_income', greenMax: 60, amberMin: 60, amberMax: 80 },
+  { metricType: 'return_on_assets', greenMin: 1, amberMin: 0.5, amberMax: 1 },
+  { metricType: 'approval_rate', greenMin: 60, amberMin: 40, amberMax: 60 },
 ];
 
 export function getRagStatus(
@@ -32,7 +41,12 @@ export function getRagStatus(
     return 'green';
   }
 
-  if (metricType === 'bad_debt_ratio' || metricType === 'npl_ratio') {
+  if (
+    metricType === 'bad_debt_ratio' || metricType === 'npl_ratio' ||
+    metricType === 'dpd_30' || metricType === 'dpd_60' || metricType === 'dpd_90' ||
+    metricType === 'write_off_rate' || metricType === 'warehouse_utilisation' ||
+    metricType === 'cost_to_income'
+  ) {
     if (threshold.greenMax !== undefined && currentValue < threshold.greenMax) return 'green';
     if (
       threshold.amberMin !== undefined &&
@@ -44,7 +58,10 @@ export function getRagStatus(
     return 'red';
   }
 
-  if (metricType === 'provision_coverage') {
+  if (
+    metricType === 'provision_coverage' || metricType === 'recovery_rate' ||
+    metricType === 'return_on_assets' || metricType === 'approval_rate'
+  ) {
     if (threshold.greenMin !== undefined && currentValue > threshold.greenMin) return 'green';
     if (
       threshold.amberMin !== undefined &&
@@ -73,10 +90,21 @@ export function ragColor(status: RagStatus): string {
 export function ragBgClass(status: RagStatus): string {
   switch (status) {
     case 'green':
-      return 'bg-rag-green/10 border-rag-green';
+      return 'bg-rag-green/10 border-l-rag-green';
     case 'amber':
-      return 'bg-rag-amber/10 border-rag-amber';
+      return 'bg-rag-amber/10 border-l-rag-amber';
     case 'red':
-      return 'bg-rag-red/10 border-rag-red';
+      return 'bg-rag-red/10 border-l-rag-red';
+  }
+}
+
+export function ragDotClass(status: RagStatus): string {
+  switch (status) {
+    case 'green':
+      return 'bg-rag-green';
+    case 'amber':
+      return 'bg-rag-amber';
+    case 'red':
+      return 'bg-rag-red';
   }
 }

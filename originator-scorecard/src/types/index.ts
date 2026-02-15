@@ -2,6 +2,9 @@ export interface Originator {
   id: string;
   name: string;
   sector: string;
+  region?: string;
+  employeeCount?: number;
+  turnoverBand?: string;
   createdAt: Date;
 }
 
@@ -13,9 +16,29 @@ export type MetricType =
   | 'provision_coverage'
   | 'npl_ratio'
   | 'total_assets'
+  | 'total_aum'
+  | 'warehouse_utilisation'
+  | 'live_contracts'
+  | 'weighted_avg_term'
+  | 'dpd_30'
+  | 'dpd_60'
+  | 'dpd_90'
+  | 'write_off_rate'
+  | 'recovery_rate'
+  | 'new_advance_volume'
+  | 'avg_deal_size'
+  | 'approval_rate'
+  | 'weighted_avg_yield'
+  | 'cost_to_income'
+  | 'return_on_assets'
+  | 'hp_split'
+  | 'finance_lease_split'
+  | 'operating_lease_split'
+  | 'avg_contract_term'
+  | 'residual_value_exposure'
   | 'custom';
 
-export type MetricUnit = 'currency' | 'percentage' | 'ratio' | 'number';
+export type MetricUnit = 'currency' | 'percentage' | 'ratio' | 'number' | 'months';
 
 export type MetricSource = 'manual' | 'csv' | 'pdf';
 
@@ -33,6 +56,7 @@ export interface FinancialMetric {
 }
 
 export type HeadlineCategory = 'earnings' | 'regulatory' | 'market' | 'risk' | 'general';
+export type HeadlineImpact = 'high' | 'medium' | 'low';
 
 export interface Headline {
   id: string;
@@ -41,6 +65,7 @@ export interface Headline {
   source: string;
   url?: string;
   category: HeadlineCategory;
+  impact?: HeadlineImpact;
   date: Date;
   createdAt: Date;
 }
@@ -55,6 +80,7 @@ export interface KpiValue {
   changePercent: number | null;
   ragStatus: RagStatus;
   unit: MetricUnit;
+  sparklineData?: number[];
 }
 
 export interface RagThreshold {
@@ -65,7 +91,28 @@ export interface RagThreshold {
   amberMax?: number;
 }
 
+export interface Covenant {
+  id: string;
+  originatorId: string;
+  name: string;
+  type: 'financial' | 'portfolio' | 'reporting';
+  metricType?: MetricType;
+  threshold: number;
+  direction: 'above' | 'below';
+  currentLevel: number;
+  headroomAbsolute: number;
+  headroomPercent: number;
+  ragStatus: RagStatus;
+  trend: 'improving' | 'stable' | 'deteriorating';
+  createdAt: Date;
+}
+
 export interface SortConfig {
   key: string;
   direction: 'asc' | 'desc';
+}
+
+export interface KpiGroup {
+  title: string;
+  kpis: KpiValue[];
 }
