@@ -111,13 +111,24 @@ async function syncAll(leagueId) {
       db.setMeta('league_name', league.league.name);
     }
 
+    // Build league_entry -> entry_id mapping from league_entries
+    const leagueEntries = league.league_entries || [];
+    const entryIdMap = {};
+    for (const le of leagueEntries) {
+      entryIdMap[le.id] = le.entry_id;
+    }
+    if (leagueEntries.length > 0) {
+      log(`Found ${leagueEntries.length} league entries with entry_id mappings.`);
+    }
+
     // Sync managers from standings
     const standings = league.standings || [];
     log(`Syncing ${standings.length} managers...`);
     for (const s of standings) {
+      const resolvedEntryId = entryIdMap[s.league_entry] || s.entry_id || s.league_entry;
       db.upsertManager({
         id: s.league_entry,
-        entry_id: s.entry_id || s.league_entry,
+        entry_id: resolvedEntryId,
         name: s.entry_name || '',
         player_name: s.player_name || '',
         points_total: s.total || 0,
@@ -127,6 +138,7 @@ async function syncAll(leagueId) {
         points_for: s.points_for || 0,
         points_against: s.points_against || 0,
       });
+      log(`  Manager: ${s.player_name} — league_entry=${s.league_entry}, entry_id=${resolvedEntryId}`);
     }
     log('Managers synced.');
 
@@ -154,11 +166,31 @@ async function syncAll(leagueId) {
     }
     log(`${matches.filter(m => m.finished).length} H2H matches synced.`);
 
-    // 4. Fetch each manager's history
+    // 4. Extract gameweek scores from H2H matches (reliable, no extra API calls)
     const managers = db.getAllManagers();
+    log('Extracting gameweek scores from match data...');
+    const finishedMatches = matches.filter(m => m.finished);
+    for (const m of finishedMatches) {
+      // Each match gives us scores for both managers in that gameweek
+      db.upsertGameweekScore({
+        manager_id: m.league_entry_1,
+        event: m.event,
+        points: m.league_entry_1_points,
+        bench_points: 0,
+        total_points: 0,
+      });
+      db.upsertGameweekScore({
+        manager_id: m.league_entry_2,
+        event: m.event,
+        points: m.league_entry_2_points,
+        bench_points: 0,
+        total_points: 0,
+      });
+    }
+
+    // Also try the history API for richer data (bench_points, total_points), but don't fail if it errors
     for (const mgr of managers) {
       const entryId = mgr.entry_id || mgr.id;
-      log(`Fetching history for ${mgr.player_name} (entry ${entryId})...`);
       try {
         const history = await api.getEntryHistory(entryId);
         const historyEntries = history.history || [];
@@ -172,10 +204,10 @@ async function syncAll(leagueId) {
           });
         }
       } catch (err) {
-        log(`Warning: Could not fetch history for ${mgr.player_name} (entry ${entryId}): ${err.message}`);
+        log(`Note: History API unavailable for ${mgr.player_name} (entry ${entryId}), using match data instead.`);
       }
     }
-    log('Gameweek histories synced.');
+    log('Gameweek scores synced.');
 
     // 5. Fetch team picks for new gameweeks
     const startEvent = lastSyncedEvent + 1;
