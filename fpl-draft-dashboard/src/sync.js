@@ -246,14 +246,15 @@ async function syncAll(leagueId) {
     log(`Extracted scores from ${finishedMatches.length} H2H matches for ${Object.keys(scoresByManager).length} managers.`);
 
     // Also try the history API for richer data (bench_points, total_points), but don't fail if it errors
-    let historyApiWorked = false;
+    let historySuccess = 0;
+    let historyFailed = [];
     for (const mgr of managers) {
       const entryId = mgr.entry_id || mgr.id;
       try {
         const history = await api.getEntryHistory(entryId);
         const historyEntries = history.history || [];
         if (historyEntries.length > 0) {
-          historyApiWorked = true;
+          historySuccess++;
           for (const h of historyEntries) {
             db.upsertGameweekScore({
               manager_id: mgr.id,
@@ -265,16 +266,16 @@ async function syncAll(leagueId) {
           }
         }
       } catch (err) {
-        // History endpoint often unavailable in Draft API — this is normal
-        if (!historyApiWorked) {
-          log(`Note: Entry history API not available (entry ${entryId}). Using H2H match scores — this is normal for Draft leagues.`);
-          // Skip remaining managers since the endpoint likely doesn't work for any of them
-          break;
-        }
+        historyFailed.push({ name: mgr.player_name, entryId });
       }
     }
-    if (historyApiWorked) {
-      log('Gameweek scores enriched with history data.');
+    if (historySuccess > 0) {
+      log(`Gameweek history enriched for ${historySuccess}/${managers.length} managers.`);
+    }
+    if (historyFailed.length > 0) {
+      for (const f of historyFailed) {
+        log(`Warning: History unavailable for ${f.name} (entry ${f.entryId}) — using H2H match scores for this manager.`);
+      }
     }
     log('Gameweek scores synced.');
 
