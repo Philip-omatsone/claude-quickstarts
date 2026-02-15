@@ -144,39 +144,50 @@ async function syncAll(leagueId) {
       db.setMeta('league_name', league.league.name);
     }
 
-    // Build league_entry -> entry_id mapping from league_entries
+    // Build lookup from league_entries — this is the primary source for:
+    //   - entry_id (the real FPL entry ID needed for /entry/{id}/ API calls)
+    //   - entry_name (team name)
+    //   - player name (first + last)
     const leagueEntries = league.league_entries || [];
-    const entryIdMap = {};
+    const leInfoById = {};      // keyed by le.id (league entry ID used in standings/matches)
+    const leInfoByEntryId = {}; // keyed by le.entry_id (reverse lookup)
     for (const le of leagueEntries) {
-      if (le.id != null && le.entry_id != null) {
-        entryIdMap[le.id] = le.entry_id;
-      }
-    }
-    if (leagueEntries.length > 0) {
-      log(`Found ${leagueEntries.length} league entries with entry_id mappings.`);
-      // Log sample entry for debugging
-      const sample = leagueEntries[0];
-      log(`  Sample league_entry keys: ${JSON.stringify(Object.keys(sample))}`);
-      log(`  Sample: id=${sample.id}, entry_id=${sample.entry_id}, entry_name=${sample.entry_name || 'N/A'}`);
-    } else {
-      log('Warning: No league_entries found in API response. Entry ID mapping may be incomplete.');
-      log(`  League response keys: ${JSON.stringify(Object.keys(league))}`);
+      const info = {
+        entry_id: le.entry_id,
+        entry_name: le.entry_name || '',
+        player_name: [le.player_first_name, le.player_last_name].filter(Boolean).join(' '),
+        short_name: le.short_name || '',
+        waiver_pick: le.waiver_pick,
+      };
+      if (le.id != null) leInfoById[le.id] = info;
+      if (le.entry_id != null) leInfoByEntryId[le.entry_id] = { ...info, league_entry_id: le.id };
     }
 
-    // Sync managers from standings
+    if (leagueEntries.length > 0) {
+      log(`Found ${leagueEntries.length} league entries.`);
+      const sample = leagueEntries[0];
+      log(`  Sample: id=${sample.id}, entry_id=${sample.entry_id}, entry_name="${sample.entry_name}", player="${sample.player_first_name} ${sample.player_last_name}"`);
+    } else {
+      log('Warning: No league_entries in API response.');
+    }
+
+    // Sync managers by merging standings (stats) with league_entries (names, entry_id)
     const standings = league.standings || [];
     log(`Syncing ${standings.length} managers...`);
-    if (standings.length > 0) {
-      const sampleStanding = standings[0];
-      log(`  Sample standing keys: ${JSON.stringify(Object.keys(sampleStanding))}`);
-    }
+
     for (const s of standings) {
-      const resolvedEntryId = entryIdMap[s.league_entry] || s.entry_id || s.league_entry;
+      // standings.league_entry should match league_entries[].id
+      const leInfo = leInfoById[s.league_entry] || leInfoByEntryId[s.league_entry] || {};
+
+      const entryId = leInfo.entry_id || s.league_entry;
+      const teamName = leInfo.entry_name || s.entry_name || '';
+      const playerName = leInfo.player_name || s.player_name || '';
+
       db.upsertManager({
         id: s.league_entry,
-        entry_id: resolvedEntryId,
-        name: s.entry_name || '',
-        player_name: s.player_name || '',
+        entry_id: entryId,
+        name: teamName,
+        player_name: playerName,
         points_total: s.total || 0,
         wins: s.matches_won || 0,
         draws: s.matches_drawn || 0,
@@ -184,8 +195,8 @@ async function syncAll(leagueId) {
         points_for: s.points_for || 0,
         points_against: s.points_against || 0,
       });
-      const mappedFrom = entryIdMap[s.league_entry] ? 'league_entries' : (s.entry_id ? 'standings.entry_id' : 'fallback=league_entry');
-      log(`  Manager: ${s.player_name} — league_entry=${s.league_entry}, entry_id=${resolvedEntryId} (via ${mappedFrom})`);
+      const src = leInfoById[s.league_entry] ? 'league_entries' : (leInfoByEntryId[s.league_entry] ? 'league_entries(reverse)' : 'standings');
+      log(`  ${playerName} — "${teamName}" | league_entry=${s.league_entry}, entry_id=${entryId} (via ${src})`);
     }
     log('Managers synced.');
 
