@@ -6,7 +6,7 @@ const footerLinks = {
     { label: "Buyer Report", href: "/buyers" },
     { label: "Rental Report", href: "/renters" },
     { label: "Reports & Tools", href: "/reports" },
-    { label: "Pricing", href: "/reports" },
+    { label: "Pricing", href: "/reports#pricing" },
   ],
   Company: [
     { label: "About", href: "/about" },
@@ -42,7 +42,7 @@ export function Footer() {
               </h3>
               <ul className="space-y-2.5">
                 {links.map((link) => (
-                  <li key={link.href}>
+                  <li key={link.label}>
                     <Link
                       href={link.href}
                       className="text-sm text-muted hover:text-foreground transition-colors"

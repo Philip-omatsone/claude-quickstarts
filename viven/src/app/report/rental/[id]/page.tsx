@@ -327,13 +327,13 @@ export default function RentalReportPage() {
         </h2>
         <p className="text-muted mt-2">
           Get a full Buyer Report with price history, risk assessment, and
-          detailed market analysis for just £9.99.
+          detailed market analysis — free during early access.
         </p>
         <a
           href="/buyers"
           className="inline-flex items-center gap-2 mt-4 bg-primary text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors"
         >
-          Get Buyer Report — £9.99
+          Get Free Buyer Report
         </a>
       </div>
 

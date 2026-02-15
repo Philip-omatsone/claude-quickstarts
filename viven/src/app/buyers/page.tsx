@@ -78,8 +78,8 @@ export default function BuyersPage() {
               </h1>
               <p className="text-muted mt-4 text-lg leading-relaxed">
                 Get a comprehensive property report that covers price history,
-                risk assessment, area insights, and market comparisons — all
-                for less than a takeaway.
+                risk assessment, area insights, and market comparisons — free
+                during early access.
               </p>
 
               <div className="mt-8 space-y-4">
@@ -99,16 +99,16 @@ export default function BuyersPage() {
 
             <div className="bg-background rounded-2xl p-8 flex flex-col items-center">
               <div className="text-center mb-6">
-                <span className="text-5xl font-heading font-bold text-foreground">
-                  £9.99
+                <span className="text-5xl font-heading font-bold text-primary">
+                  Free
                 </span>
-                <p className="text-muted mt-1">per property report</p>
+                <p className="text-muted mt-1">during early access</p>
               </div>
 
               <PostcodeSearch variant="buyer" />
 
               <p className="text-xs text-muted mt-4 text-center">
-                Pay securely with Stripe. Report generated instantly.
+                Report generated instantly. No payment required.
               </p>
             </div>
           </div>

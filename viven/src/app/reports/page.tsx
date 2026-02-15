@@ -70,10 +70,10 @@ export default function ReportsPage() {
               Buyer Report
             </h2>
             <div className="mt-4">
-              <span className="text-4xl font-heading font-bold text-foreground">
-                £9.99
+              <span className="text-4xl font-heading font-bold text-primary">
+                Free
               </span>
-              <span className="text-muted ml-2">per property</span>
+              <span className="text-muted ml-2">during early access</span>
             </div>
             <p className="text-muted mt-3 text-sm">
               Everything you need to make a confident buying decision.
