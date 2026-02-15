@@ -17,7 +17,7 @@ function getSyncStatus() {
     lastSyncedEvent: db.getLastSyncedEvent(),
     leagueId: db.getMeta('league_id'),
     leagueName: db.getMeta('league_name'),
-    log: syncLog.slice(-50),
+    log: syncLog.slice(-100),
     error: syncError,
   };
 }
@@ -78,26 +78,59 @@ async function syncAll(leagueId) {
     let league;
     try {
       league = await api.getLeagueDetails(leagueId);
+      // Verify this is actually a league response (has standings or league_entries)
+      if (!league.standings && !league.league_entries && !league.league) {
+        throw new Error('FPL API error: 404 Not Found');
+      }
     } catch (err) {
       if (err.message.includes('404')) {
         // ID might be an entry/team ID instead of a league ID — look up the league
         log(`League ID ${leagueId} not found. Checking if it's an entry/team ID...`);
         try {
           const entry = await api.getEntryDetails(leagueId);
-          const leagues = entry.entry && entry.entry.league_set
-            ? entry.entry.league_set
-            : (entry.league_set || []);
+          log(`Entry details response keys: ${JSON.stringify(Object.keys(entry))}`);
+          if (entry.entry) {
+            log(`Entry.entry keys: ${JSON.stringify(Object.keys(entry.entry))}`);
+          }
+
+          // Check multiple possible locations for league data in the API response
+          let leagues = [];
+          if (entry.entry && Array.isArray(entry.entry.league_set) && entry.entry.league_set.length > 0) {
+            leagues = entry.entry.league_set;
+          } else if (Array.isArray(entry.league_set) && entry.league_set.length > 0) {
+            leagues = entry.league_set;
+          } else if (entry.entry && Array.isArray(entry.entry.leagues)) {
+            leagues = entry.entry.leagues.map(l => l.id || l);
+          } else if (Array.isArray(entry.leagues)) {
+            leagues = entry.leagues.map(l => l.id || l);
+          }
+
+          // Also check if draft_league_id or similar field exists
+          if (leagues.length === 0) {
+            const e = entry.entry || entry;
+            for (const key of ['draft_league_id', 'league_id', 'league']) {
+              if (e[key]) {
+                leagues = [e[key]];
+                log(`Found league via '${key}' field: ${e[key]}`);
+                break;
+              }
+            }
+          }
+
+          log(`Detected leagues from entry: ${JSON.stringify(leagues)}`);
+
           if (leagues.length > 0) {
             leagueId = String(leagues[0]);
             log(`Found league ID ${leagueId} from entry. Fetching league details...`);
             db.setMeta('league_id', leagueId);
             league = await api.getLeagueDetails(leagueId);
           } else {
-            throw new Error('Could not find a league for this entry. Make sure you are in a draft league.');
+            log(`Full entry response: ${JSON.stringify(entry).slice(0, 1000)}`);
+            throw new Error('Could not find a league for this entry. Make sure you are in a draft league. The entry response did not contain league information.');
           }
         } catch (entryErr) {
           if (entryErr.message.includes('404')) {
-            throw new Error(`ID ${leagueId} is not a valid league or entry ID. Check your ID and try again.`);
+            throw new Error(`ID ${leagueId} is not a valid league or entry ID. Check your ID and try again. Tip: Go to draft.premierleague.com, open your league, and use the number from the URL.`);
           }
           throw entryErr;
         }
@@ -115,15 +148,28 @@ async function syncAll(leagueId) {
     const leagueEntries = league.league_entries || [];
     const entryIdMap = {};
     for (const le of leagueEntries) {
-      entryIdMap[le.id] = le.entry_id;
+      if (le.id != null && le.entry_id != null) {
+        entryIdMap[le.id] = le.entry_id;
+      }
     }
     if (leagueEntries.length > 0) {
       log(`Found ${leagueEntries.length} league entries with entry_id mappings.`);
+      // Log sample entry for debugging
+      const sample = leagueEntries[0];
+      log(`  Sample league_entry keys: ${JSON.stringify(Object.keys(sample))}`);
+      log(`  Sample: id=${sample.id}, entry_id=${sample.entry_id}, entry_name=${sample.entry_name || 'N/A'}`);
+    } else {
+      log('Warning: No league_entries found in API response. Entry ID mapping may be incomplete.');
+      log(`  League response keys: ${JSON.stringify(Object.keys(league))}`);
     }
 
     // Sync managers from standings
     const standings = league.standings || [];
     log(`Syncing ${standings.length} managers...`);
+    if (standings.length > 0) {
+      const sampleStanding = standings[0];
+      log(`  Sample standing keys: ${JSON.stringify(Object.keys(sampleStanding))}`);
+    }
     for (const s of standings) {
       const resolvedEntryId = entryIdMap[s.league_entry] || s.entry_id || s.league_entry;
       db.upsertManager({
@@ -138,7 +184,8 @@ async function syncAll(leagueId) {
         points_for: s.points_for || 0,
         points_against: s.points_against || 0,
       });
-      log(`  Manager: ${s.player_name} — league_entry=${s.league_entry}, entry_id=${resolvedEntryId}`);
+      const mappedFrom = entryIdMap[s.league_entry] ? 'league_entries' : (s.entry_id ? 'standings.entry_id' : 'fallback=league_entry');
+      log(`  Manager: ${s.player_name} — league_entry=${s.league_entry}, entry_id=${resolvedEntryId} (via ${mappedFrom})`);
     }
     log('Managers synced.');
 
@@ -170,42 +217,64 @@ async function syncAll(leagueId) {
     const managers = db.getAllManagers();
     log('Extracting gameweek scores from match data...');
     const finishedMatches = matches.filter(m => m.finished);
+
+    // Collect all scores per manager so we can compute cumulative totals
+    const scoresByManager = {};
     for (const m of finishedMatches) {
-      // Each match gives us scores for both managers in that gameweek
-      db.upsertGameweekScore({
-        manager_id: m.league_entry_1,
-        event: m.event,
-        points: m.league_entry_1_points,
-        bench_points: 0,
-        total_points: 0,
-      });
-      db.upsertGameweekScore({
-        manager_id: m.league_entry_2,
-        event: m.event,
-        points: m.league_entry_2_points,
-        bench_points: 0,
-        total_points: 0,
-      });
+      if (!scoresByManager[m.league_entry_1]) scoresByManager[m.league_entry_1] = {};
+      if (!scoresByManager[m.league_entry_2]) scoresByManager[m.league_entry_2] = {};
+      scoresByManager[m.league_entry_1][m.event] = m.league_entry_1_points;
+      scoresByManager[m.league_entry_2][m.event] = m.league_entry_2_points;
     }
 
+    // Now insert with cumulative totals
+    for (const [managerId, eventScores] of Object.entries(scoresByManager)) {
+      const events = Object.keys(eventScores).map(Number).sort((a, b) => a - b);
+      let cumulative = 0;
+      for (const event of events) {
+        cumulative += eventScores[event];
+        db.upsertGameweekScore({
+          manager_id: parseInt(managerId),
+          event: event,
+          points: eventScores[event],
+          bench_points: 0,
+          total_points: cumulative,
+        });
+      }
+    }
+
+    log(`Extracted scores from ${finishedMatches.length} H2H matches for ${Object.keys(scoresByManager).length} managers.`);
+
     // Also try the history API for richer data (bench_points, total_points), but don't fail if it errors
+    let historyApiWorked = false;
     for (const mgr of managers) {
       const entryId = mgr.entry_id || mgr.id;
       try {
         const history = await api.getEntryHistory(entryId);
         const historyEntries = history.history || [];
-        for (const h of historyEntries) {
-          db.upsertGameweekScore({
-            manager_id: mgr.id,
-            event: h.event,
-            points: h.points,
-            bench_points: h.points_on_bench || 0,
-            total_points: h.total_points,
-          });
+        if (historyEntries.length > 0) {
+          historyApiWorked = true;
+          for (const h of historyEntries) {
+            db.upsertGameweekScore({
+              manager_id: mgr.id,
+              event: h.event,
+              points: h.points,
+              bench_points: h.points_on_bench || 0,
+              total_points: h.total_points,
+            });
+          }
         }
       } catch (err) {
-        log(`Note: History API unavailable for ${mgr.player_name} (entry ${entryId}), using match data instead.`);
+        // History endpoint often unavailable in Draft API — this is normal
+        if (!historyApiWorked) {
+          log(`Note: Entry history API not available (entry ${entryId}). Using H2H match scores — this is normal for Draft leagues.`);
+          // Skip remaining managers since the endpoint likely doesn't work for any of them
+          break;
+        }
       }
+    }
+    if (historyApiWorked) {
+      log('Gameweek scores enriched with history data.');
     }
     log('Gameweek scores synced.');
 
