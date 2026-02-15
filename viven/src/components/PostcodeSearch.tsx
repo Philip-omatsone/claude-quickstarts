@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, MapPin, ChevronDown } from "lucide-react";
+import { Search, MapPin, ChevronDown, Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface PostcodeSearchProps {
@@ -11,10 +11,10 @@ interface PostcodeSearchProps {
 
 interface AddressResult {
   address: string;
-  buildingNumber: string;
-  street: string;
-  town: string;
+  source: "land-registry" | "epc" | "manual";
 }
+
+const SESSION_KEY = "viven_postcode_search";
 
 export function PostcodeSearch({
   variant = "buyer",
@@ -28,15 +28,45 @@ export function PostcodeSearch({
   const [showDropdown, setShowDropdown] = useState(false);
   const [postcodeValid, setPostcodeValid] = useState(false);
   const [fetchingAddresses, setFetchingAddresses] = useState(false);
+  const [manualEntry, setManualEntry] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // Restore state from sessionStorage on mount (back button support)
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY);
+      if (saved) {
+        const { postcode: pc, address: addr } = JSON.parse(saved);
+        if (pc) {
+          setPostcode(pc);
+          setPostcodeValid(validatePostcode(pc));
+        }
+        if (addr) setAddress(addr);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Persist state to sessionStorage on change
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({ postcode, address })
+      );
+    } catch {
+      // ignore
+    }
+  }, [postcode, address]);
 
   const validatePostcode = (pc: string) => {
     const regex = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
     return regex.test(pc.trim());
   };
 
-  // Fetch addresses when a valid postcode is entered
+  // Fetch real addresses from Land Registry when a valid postcode is entered
   useEffect(() => {
     const trimmed = postcode.trim();
     if (!validatePostcode(trimmed)) {
@@ -46,65 +76,68 @@ export function PostcodeSearch({
     }
 
     setPostcodeValid(true);
+
+    if (variant !== "buyer") return;
+
     setFetchingAddresses(true);
 
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        // Use Postcodes.io to get nearby addresses, then use
-        // the Royal Mail PAF-style lookup via the postcode
+        // Fetch real addresses from Land Registry Price Paid Data
+        const formatted = trimmed.toUpperCase();
+        const params = new URLSearchParams({
+          "propertyAddress.postcode": formatted,
+          _pageSize: "100",
+          _sort: "-transactionDate",
+        });
+
         const res = await fetch(
-          `https://api.postcodes.io/postcodes/${encodeURIComponent(trimmed)}`
+          `https://landregistry.data.gov.uk/data/ppi/transaction-record.json?${params}`,
+          { signal: controller.signal }
         );
-        const data = await res.json();
 
-        if (data.result) {
-          // Generate address list from postcode data
-          // In production this would use a PAF/address lookup API
-          // For now, construct sensible addresses from the postcode area
-          const ward = data.result.admin_ward || "";
-          const district = data.result.admin_district || "";
-          const parish = data.result.parish || "";
-          const street = ward || parish || district;
+        if (!res.ok) throw new Error("Land Registry API error");
 
-          // Generate numbered addresses for the postcode
-          const generated: AddressResult[] = [];
-          for (let i = 1; i <= 20; i++) {
-            const num = i * 2 - 1; // odd numbers
-            generated.push({
-              address: `${num} ${street}, ${district}, ${trimmed}`,
-              buildingNumber: String(num),
-              street: street,
-              town: district,
-            });
-          }
-          for (let i = 1; i <= 20; i++) {
-            const num = i * 2; // even numbers
-            generated.push({
-              address: `${num} ${street}, ${district}, ${trimmed}`,
-              buildingNumber: String(num),
-              street: street,
-              town: district,
-            });
-          }
+        const json = await res.json();
+        const items = json.result?.items || [];
 
-          // Sort by number
-          generated.sort(
-            (a, b) => parseInt(a.buildingNumber) - parseInt(b.buildingNumber)
-          );
+        // Extract unique addresses
+        const seen = new Set<string>();
+        const results: AddressResult[] = [];
 
-          setAddresses(generated);
-          if (variant === "buyer") {
-            setShowDropdown(true);
+        for (const item of items) {
+          const addr = item.propertyAddress;
+          if (!addr) continue;
+          const parts = [addr.paon, addr.street, addr.town].filter(Boolean);
+          const full = parts.join(", ");
+          const key = full.toLowerCase();
+
+          if (!seen.has(key) && full) {
+            seen.add(key);
+            results.push({ address: full, source: "land-registry" });
           }
         }
-      } catch {
-        // Non-critical, user can still type address manually
+
+        // Sort alphabetically for easier scanning
+        results.sort((a, b) => a.address.localeCompare(b.address));
+
+        setAddresses(results);
+        if (results.length > 0) {
+          setShowDropdown(true);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        // Silently fail - user can still use manual entry
       } finally {
         setFetchingAddresses(false);
       }
-    }, 300);
+    }, 400);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [postcode, variant]);
 
   // Close dropdown on outside click
@@ -166,6 +199,7 @@ export function PostcodeSearch({
   const selectAddress = (addr: AddressResult) => {
     setAddress(addr.address);
     setShowDropdown(false);
+    setManualEntry(false);
   };
 
   return (
@@ -181,9 +215,10 @@ export function PostcodeSearch({
               setPostcode(e.target.value.toUpperCase());
               setError("");
               setAddress("");
+              setManualEntry(false);
             }}
             placeholder={placeholder}
-            className="w-full pl-10 pr-4 py-3 rounded-xl border border-border bg-white text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+            className="w-full pl-10 pr-16 py-3 rounded-xl border border-border bg-white text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
           />
           {postcodeValid && (
@@ -193,49 +228,106 @@ export function PostcodeSearch({
           )}
         </div>
 
-        {/* Address dropdown (buyer only) */}
+        {/* Address selection (buyer only) */}
         {variant === "buyer" && postcodeValid && (
-          <div className="relative" ref={dropdownRef}>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted z-10" />
-            <button
-              type="button"
-              onClick={() => setShowDropdown(!showDropdown)}
-              className="w-full pl-10 pr-10 py-3 rounded-xl border border-border bg-white text-left focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-            >
-              {address ? (
-                <span className="text-foreground">{address}</span>
-              ) : fetchingAddresses ? (
-                <span className="text-muted">Loading addresses...</span>
-              ) : (
-                <span className="text-muted">Select an address</span>
-              )}
-            </button>
-            <ChevronDown
-              className={`absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted transition-transform ${
-                showDropdown ? "rotate-180" : ""
-              }`}
-            />
+          <>
+            {manualEntry ? (
+              /* Manual address input */
+              <div className="relative">
+                <Pencil className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="e.g. 10 Downing Street"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-border bg-white text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  autoFocus
+                />
+              </div>
+            ) : (
+              /* Address dropdown */
+              <div className="relative" ref={dropdownRef}>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted z-10" />
+                <button
+                  type="button"
+                  onClick={() => setShowDropdown(!showDropdown)}
+                  className="w-full pl-10 pr-10 py-3 rounded-xl border border-border bg-white text-left focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                >
+                  {address ? (
+                    <span className="text-foreground">{address}</span>
+                  ) : fetchingAddresses ? (
+                    <span className="text-muted">Finding addresses...</span>
+                  ) : addresses.length > 0 ? (
+                    <span className="text-muted">
+                      Select address ({addresses.length} found)
+                    </span>
+                  ) : (
+                    <span className="text-muted">
+                      No addresses found — try manual entry
+                    </span>
+                  )}
+                </button>
+                <ChevronDown
+                  className={`absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted transition-transform ${
+                    showDropdown ? "rotate-180" : ""
+                  }`}
+                />
 
-            {showDropdown && addresses.length > 0 && (
-              <div className="absolute z-20 top-full mt-1 w-full bg-white border border-border rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                <div className="p-2 border-b border-border">
-                  <p className="text-xs text-muted px-2">
-                    {addresses.length} addresses found
-                  </p>
-                </div>
-                {addresses.map((addr, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => selectAddress(addr)}
-                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-primary-light transition-colors first:rounded-t-none last:rounded-b-xl"
-                  >
-                    {addr.address}
-                  </button>
-                ))}
+                {showDropdown && (
+                  <div className="absolute z-20 top-full mt-1 w-full bg-white border border-border rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                    {addresses.length > 0 && (
+                      <>
+                        <div className="p-2 border-b border-border">
+                          <p className="text-xs text-muted px-2">
+                            {addresses.length} addresses found (from Land
+                            Registry)
+                          </p>
+                        </div>
+                        {addresses.map((addr, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => selectAddress(addr)}
+                            className="w-full px-4 py-2.5 text-left text-sm hover:bg-primary-light transition-colors"
+                          >
+                            {addr.address}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {/* Manual entry option always shown */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualEntry(true);
+                        setShowDropdown(false);
+                        setAddress("");
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-sm text-primary font-medium hover:bg-primary-light transition-colors border-t border-border flex items-center gap-2"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Enter address manually
+                    </button>
+                  </div>
+                )}
               </div>
             )}
-          </div>
+
+            {/* Toggle between manual and dropdown */}
+            {manualEntry && addresses.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setManualEntry(false);
+                  setAddress("");
+                }}
+                className="text-xs text-primary hover:underline text-left"
+              >
+                Back to address list
+              </button>
+            )}
+          </>
         )}
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
@@ -250,9 +342,7 @@ export function PostcodeSearch({
           ) : (
             <>
               <Search className="w-5 h-5" />
-              {variant === "buyer"
-                ? "Get Free Report"
-                : "Get Free Report"}
+              Get Free Report
             </>
           )}
         </button>

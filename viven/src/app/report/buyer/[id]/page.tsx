@@ -193,9 +193,14 @@ export default function BuyerReportPage() {
             )}
 
             {!epc && !lastSale && (
-              <p className="text-muted text-sm col-span-2">
-                Property overview data temporarily unavailable.
-              </p>
+              <div className="col-span-2 bg-background rounded-xl p-4">
+                <p className="text-muted text-sm">
+                  No EPC or sale records found for this specific property.
+                  {priceHistory && priceHistory.transactions.length > 0 && (
+                    <> See price history below for area transaction data.</>
+                  )}
+                </p>
+              </div>
             )}
           </div>
         </ReportSection>
