@@ -169,6 +169,24 @@ export interface Amenity {
   longitude: number;
 }
 
+// Viven Verdict
+export interface VivenVerdict {
+  score: number; // 0-100
+  summary: string;
+  pills: { label: string; type: "positive" | "neutral" | "negative" }[];
+}
+
+// Vibe Scores
+export interface VibeScores {
+  overall: number;
+  walkability: number;
+  greenSpace: number;
+  foodAndDrink: number;
+  familyFriendly: number;
+  nightlife: number;
+  peaceAndQuiet: number;
+}
+
 // Buyer Report (full)
 export interface BuyerReport {
   id: string;
@@ -176,6 +194,8 @@ export interface BuyerReport {
   address: string;
   generatedAt: string;
   geocode: GeocodeResult;
+  verdict: VivenVerdict;
+  vibeScores: VibeScores;
   propertyOverview: {
     epc: EPCRating | null;
     lastSale: PropertyTransaction | null;

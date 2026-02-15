@@ -17,6 +17,16 @@ import {
   Droplets,
   Mountain,
   AlertTriangle,
+  Star,
+  Sparkles,
+  TreePine,
+  UtensilsCrossed,
+  Baby,
+  Moon,
+  Volume2,
+  CheckCircle2,
+  XCircle,
+  Info,
 } from "lucide-react";
 import { BuyerReport } from "@/lib/api/types";
 import { ReportSection } from "@/components/report/ReportSection";
@@ -24,27 +34,87 @@ import { RiskBadge } from "@/components/report/RiskBadge";
 import { PriceChart } from "@/components/report/PriceChart";
 import { CrimeCategoryChart, CrimeTrendChart } from "@/components/report/CrimeChart";
 
+// --- Helpers ---
+const formatPrice = (price: number) =>
+  new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    maximumFractionDigits: 0,
+  }).format(price);
+
+const epcColor = (rating: string) => {
+  const map: Record<string, string> = {
+    A: "bg-green-600", B: "bg-green-500", C: "bg-lime-500",
+    D: "bg-yellow-400", E: "bg-amber-400", F: "bg-orange-500", G: "bg-red-500",
+  };
+  return map[rating] || "bg-gray-400";
+};
+
+const scoreColor = (score: number) =>
+  score >= 75 ? "text-green-600" : score >= 50 ? "text-amber-500" : "text-red-500";
+
+const scoreRingColor = (score: number) =>
+  score >= 75 ? "stroke-green-500" : score >= 50 ? "stroke-amber-400" : "stroke-red-500";
+
+function ScoreRing({ score, size = 96 }: { score: number; size?: number }) {
+  const r = (size - 12) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (score / 100) * circ;
+  return (
+    <svg width={size} height={size} className="transform -rotate-90">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#E5E7EB" strokeWidth={8} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none"
+        className={scoreRingColor(score)}
+        strokeWidth={8} strokeLinecap="round"
+        strokeDasharray={circ} strokeDashoffset={offset}
+        style={{ transition: "stroke-dashoffset 1s ease" }}
+      />
+    </svg>
+  );
+}
+
+function VibeBar({ label, score, icon: Icon }: { label: string; score: number; icon: React.ElementType }) {
+  return (
+    <div className="flex items-center gap-3">
+      <Icon className="w-4 h-4 text-muted shrink-0" />
+      <span className="text-sm text-muted w-28 shrink-0">{label}</span>
+      <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-primary transition-all"
+          style={{ width: `${score * 10}%` }}
+        />
+      </div>
+      <span className="text-sm font-semibold w-8 text-right">{score}/10</span>
+    </div>
+  );
+}
+
+function InsightBox({ text }: { text: string }) {
+  return (
+    <div className="bg-primary-light border border-primary/20 rounded-xl p-4 flex gap-3 mt-4">
+      <Sparkles className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+      <p className="text-sm text-foreground">{text}</p>
+    </div>
+  );
+}
+
+// --- Main Component ---
 export default function BuyerReportPage() {
   const { id } = useParams();
   const [report, setReport] = useState<BuyerReport | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Try sessionStorage first
     const stored = sessionStorage.getItem(`report_${id}`);
     if (stored) {
       setReport(JSON.parse(stored));
       setLoading(false);
       return;
     }
-
-    // Fallback: fetch from API
     fetch(`/api/report/${id}`)
       .then((r) => r.json())
-      .then((data) => {
-        setReport(data);
-        setLoading(false);
-      })
+      .then((data) => { setReport(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [id]);
 
@@ -67,13 +137,6 @@ export default function BuyerReportPage() {
     );
   }
 
-  const formatPrice = (price: number) =>
-    new Intl.NumberFormat("en-GB", {
-      style: "currency",
-      currency: "GBP",
-      maximumFractionDigits: 0,
-    }).format(price);
-
   const epc = report.propertyOverview.epc;
   const lastSale = report.propertyOverview.lastSale;
   const flood = report.riskAssessment.flood;
@@ -86,10 +149,13 @@ export default function BuyerReportPage() {
   const airQuality = report.environmental.airQuality;
   const priceHistory = report.priceHistory;
   const planning = report.riskAssessment.planning;
+  const verdict = report.verdict;
+  const vibeScores = report.vibeScores;
+  const commuteMin = transport?.commuteToCenter?.[0]?.durationMinutes;
 
   return (
     <div className="page-transition max-w-4xl mx-auto px-4 pt-8 pb-16">
-      {/* Report Header */}
+      {/* ──────── HEADER ──────── */}
       <div className="bg-primary rounded-2xl p-6 md:p-8 text-white mb-6">
         <div className="flex items-start justify-between">
           <div>
@@ -110,102 +176,162 @@ export default function BuyerReportPage() {
         </div>
         <div className="mt-4 text-xs text-white/60">
           Generated {new Date(report.generatedAt).toLocaleDateString("en-GB", {
-            day: "numeric",
-            month: "long",
-            year: "numeric",
+            day: "numeric", month: "long", year: "numeric",
           })} | Report ID: {report.id}
         </div>
       </div>
 
-      <div className="space-y-6">
-        {/* 1. Property Overview */}
-        <ReportSection icon={Home} title="Property Overview" subtitle="Key facts about the property">
-          <div className="grid sm:grid-cols-2 gap-6">
-            {epc && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
-                  EPC Details
-                </h3>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-muted">Property Type</span>
-                    <p className="font-medium">{epc.propertyType || "N/A"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted">Built Form</span>
-                    <p className="font-medium">{epc.builtForm || "N/A"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted">Floor Area</span>
-                    <p className="font-medium">
-                      {epc.totalFloorArea > 0 ? `${epc.totalFloorArea} m²` : "N/A"}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted">Rooms</span>
-                    <p className="font-medium">{epc.numberOfRooms || "N/A"}</p>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <span className="text-muted text-sm">EPC Rating</span>
-                  <div className="flex items-center gap-3 mt-1">
-                    <div className="w-12 h-12 rounded-lg bg-green-500 text-white flex items-center justify-center font-heading font-bold text-xl">
-                      {epc.currentEnergyRating || "?"}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">
-                        Current: {epc.currentEnergyRating} ({epc.currentEnergyEfficiency})
-                      </p>
-                      <p className="text-xs text-muted">
-                        Potential: {epc.potentialEnergyRating} ({epc.potentialEnergyEfficiency})
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {lastSale && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
-                  Last Sale
-                </h3>
-                <div className="bg-background rounded-xl p-4">
-                  <p className="text-2xl font-heading font-bold text-primary">
-                    {formatPrice(lastSale.price)}
-                  </p>
-                  <p className="text-sm text-muted mt-1">
-                    {new Date(lastSale.dateOfTransfer).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </p>
-                  <div className="mt-3 text-sm">
-                    <span className="text-muted">Tenure: </span>
-                    <span className="font-medium">
-                      {lastSale.tenure === "F" ? "Freehold" : "Leasehold"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!epc && !lastSale && (
-              <div className="col-span-2 bg-background rounded-xl p-4">
-                <p className="text-muted text-sm">
-                  No EPC or sale records found for this specific property.
-                  {priceHistory && priceHistory.transactions.length > 0 && (
-                    <> See price history below for area transaction data.</>
-                  )}
-                </p>
-              </div>
-            )}
+      {/* ──────── VIVEN VERDICT ──────── */}
+      {verdict && (
+        <div className="bg-white rounded-2xl border border-border p-6 md:p-8 mb-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Sparkles className="w-5 h-5 text-primary" />
+            <h2 className="font-heading text-xl font-bold">Viven Verdict</h2>
           </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-8">
+            {/* Score ring */}
+            <div className="relative shrink-0">
+              <ScoreRing score={verdict.score} size={120} />
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className={`text-3xl font-heading font-bold ${scoreColor(verdict.score)}`}>
+                  {verdict.score}
+                </span>
+                <span className="text-xs text-muted">/100</span>
+              </div>
+            </div>
+
+            <div className="flex-1">
+              {/* Pills */}
+              <div className="flex flex-wrap gap-2 mb-3">
+                {verdict.pills.map((pill, i) => (
+                  <span
+                    key={i}
+                    className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${
+                      pill.type === "positive"
+                        ? "bg-green-50 border-green-200 text-green-700"
+                        : pill.type === "negative"
+                        ? "bg-red-50 border-red-200 text-red-700"
+                        : "bg-gray-50 border-gray-200 text-gray-700"
+                    }`}
+                  >
+                    {pill.type === "positive" ? <CheckCircle2 className="w-3 h-3" /> :
+                     pill.type === "negative" ? <XCircle className="w-3 h-3" /> :
+                     <Info className="w-3 h-3" />}
+                    {pill.label}
+                  </span>
+                ))}
+              </div>
+
+              {/* Summary */}
+              <p className="text-sm text-muted leading-relaxed">{verdict.summary}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ──────── QUICK STATS ──────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div className="bg-white rounded-xl border border-border p-4 text-center">
+          <p className="text-xs text-muted">Est. Value</p>
+          <p className="text-lg font-heading font-bold mt-1">
+            {priceHistory && priceHistory.estimatedValueRange.high > 0
+              ? formatPrice(Math.round((priceHistory.estimatedValueRange.low + priceHistory.estimatedValueRange.high) / 2))
+              : "N/A"}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-border p-4 text-center">
+          <p className="text-xs text-muted">Per sq ft</p>
+          <p className="text-lg font-heading font-bold mt-1">
+            {priceHistory && priceHistory.pricePerSqFt > 0
+              ? `${formatPrice(priceHistory.pricePerSqFt)}`
+              : "N/A"}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-border p-4 text-center">
+          <p className="text-xs text-muted">EPC Rating</p>
+          <p className="text-lg font-heading font-bold mt-1">
+            {epc ? (
+              <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-white text-sm ${epcColor(epc.currentEnergyRating)}`}>
+                {epc.currentEnergyRating}
+              </span>
+            ) : "N/A"}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-border p-4 text-center">
+          <p className="text-xs text-muted">Commute</p>
+          <p className="text-lg font-heading font-bold mt-1">
+            {commuteMin ? `${commuteMin} min` : "N/A"}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        {/* ──────── 1. PROPERTY OVERVIEW ──────── */}
+        <ReportSection icon={Home} title="Property Overview" subtitle="Key facts about the property">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border">
+            {[
+              { label: "Type", value: epc?.propertyType || (lastSale?.propertyType === "D" ? "Detached" : lastSale?.propertyType === "S" ? "Semi-Detached" : lastSale?.propertyType === "T" ? "Terraced" : lastSale?.propertyType === "F" ? "Flat" : "N/A") },
+              { label: "Rooms", value: epc?.numberOfRooms ? String(epc.numberOfRooms) : "N/A" },
+              { label: "Floor Area", value: epc && epc.totalFloorArea > 0 ? `${epc.totalFloorArea} m\u00B2` : "N/A" },
+              { label: "Tenure", value: lastSale ? (lastSale.tenure === "F" ? "Freehold" : "Leasehold") : "N/A" },
+              { label: "Built Form", value: epc?.builtForm || "N/A" },
+              { label: "Last Sale", value: lastSale ? formatPrice(lastSale.price) : "N/A" },
+              { label: "Sale Date", value: lastSale ? new Date(lastSale.dateOfTransfer).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A" },
+              { label: "EPC Score", value: epc ? `${epc.currentEnergyEfficiency}/100` : "N/A" },
+            ].map((item) => (
+              <div key={item.label} className="bg-white p-3 text-center">
+                <p className="text-xs text-muted">{item.label}</p>
+                <p className="text-sm font-semibold mt-0.5">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* EPC Bar */}
+          {epc && (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold mb-3">EPC Performance</h3>
+              <div className="space-y-1.5">
+                {["A", "B", "C", "D", "E", "F", "G"].map((grade) => {
+                  const widths: Record<string, string> = { A: "100%", B: "86%", C: "72%", D: "58%", E: "44%", F: "30%", G: "16%" };
+                  const isActive = grade === epc.currentEnergyRating;
+                  return (
+                    <div key={grade} className="flex items-center gap-2">
+                      <span className="text-xs w-4 text-center font-medium text-muted">{grade}</span>
+                      <div className="flex-1 h-5 bg-gray-50 rounded overflow-hidden relative">
+                        <div
+                          className={`h-full rounded ${epcColor(grade)} ${isActive ? "opacity-100" : "opacity-30"}`}
+                          style={{ width: widths[grade] }}
+                        />
+                        {isActive && (
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-white drop-shadow">
+                            {epc.currentEnergyEfficiency}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted mt-2">
+                Current: {epc.currentEnergyRating} ({epc.currentEnergyEfficiency}) | Potential: {epc.potentialEnergyRating} ({epc.potentialEnergyEfficiency})
+              </p>
+            </div>
+          )}
+
+          {!epc && !lastSale && (
+            <div className="mt-4 bg-background rounded-xl p-4">
+              <p className="text-muted text-sm">
+                No EPC or sale records found for this specific property.
+                {priceHistory && priceHistory.transactions.length > 0 && (
+                  <> See price history below for area transaction data.</>
+                )}
+              </p>
+            </div>
+          )}
         </ReportSection>
 
-        {/* 2. Price History & Valuation */}
+        {/* ──────── 2. PRICE HISTORY ──────── */}
         <ReportSection
           icon={TrendingUp}
           title="Price History & Valuation"
@@ -218,27 +344,36 @@ export default function BuyerReportPage() {
 
               <div className="grid sm:grid-cols-3 gap-4 mt-6">
                 <div className="bg-background rounded-xl p-4 text-center">
-                  <p className="text-sm text-muted">Area Average</p>
-                  <p className="text-xl font-heading font-bold text-foreground mt-1">
-                    {priceHistory.areaAverage > 0
-                      ? formatPrice(priceHistory.areaAverage)
-                      : "N/A"}
+                  <p className="text-xs text-muted">Area Average</p>
+                  <p className="text-xl font-heading font-bold mt-1">
+                    {priceHistory.areaAverage > 0 ? formatPrice(priceHistory.areaAverage) : "N/A"}
                   </p>
                 </div>
                 <div className="bg-background rounded-xl p-4 text-center">
-                  <p className="text-sm text-muted">Est. Value Range</p>
-                  <p className="text-xl font-heading font-bold text-foreground mt-1">
-                    {formatPrice(priceHistory.estimatedValueRange.low)} –{" "}
-                    {formatPrice(priceHistory.estimatedValueRange.high)}
+                  <p className="text-xs text-muted">Est. Value Range</p>
+                  <p className="text-xl font-heading font-bold mt-1">
+                    {formatPrice(priceHistory.estimatedValueRange.low)} – {formatPrice(priceHistory.estimatedValueRange.high)}
                   </p>
                 </div>
                 <div className="bg-background rounded-xl p-4 text-center">
-                  <p className="text-sm text-muted">Transactions</p>
-                  <p className="text-xl font-heading font-bold text-foreground mt-1">
+                  <p className="text-xs text-muted">Transactions</p>
+                  <p className="text-xl font-heading font-bold mt-1">
                     {priceHistory.transactions.length}
                   </p>
                 </div>
               </div>
+
+              {priceHistory.pricePerSqFt > 0 && priceHistory.areaAverage > 0 && epc && epc.totalFloorArea > 0 && (
+                <InsightBox
+                  text={`At ${formatPrice(priceHistory.pricePerSqFt)}/sq ft, this property ${
+                    priceHistory.pricePerSqFt > Math.round(priceHistory.areaAverage / (epc.totalFloorArea * 10.764))
+                      ? "sits above"
+                      : "sits below"
+                  } the area average. The ${epc.totalFloorArea} m\u00B2 floor area is ${
+                    epc.totalFloorArea > 80 ? "above" : epc.totalFloorArea > 60 ? "around" : "below"
+                  } average for the postcode.`}
+                />
+              )}
 
               {priceHistory.comparableSales.length > 0 && (
                 <div className="mt-6">
@@ -247,10 +382,7 @@ export default function BuyerReportPage() {
                   </h3>
                   <div className="space-y-2">
                     {priceHistory.comparableSales.slice(0, 5).map((sale, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                      >
+                      <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                         <div>
                           <p className="text-sm font-medium">{sale.address}</p>
                           <p className="text-xs text-muted">
@@ -267,14 +399,9 @@ export default function BuyerReportPage() {
           )}
         </ReportSection>
 
-        {/* 3. Risk Assessment */}
-        <ReportSection
-          icon={ShieldCheck}
-          title="Risk Assessment"
-          subtitle="Environmental and planning risks"
-        >
+        {/* ──────── 3. RISK ASSESSMENT ──────── */}
+        <ReportSection icon={ShieldCheck} title="Risk Assessment" subtitle="Environmental and planning risks">
           <div className="grid sm:grid-cols-2 gap-6">
-            {/* Flood Risk */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Droplets className="w-4 h-4 text-blue-500" />
@@ -282,31 +409,14 @@ export default function BuyerReportPage() {
               </div>
               {flood ? (
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted">River & Sea</span>
-                    <RiskBadge level={flood.riverAndSea} />
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted">Surface Water</span>
-                    <RiskBadge level={flood.surfaceWater} />
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted">Flood Zone</span>
-                    <span className="font-medium">Zone {flood.floodZone}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted">Reservoir Risk</span>
-                    <span className="font-medium">
-                      {flood.reservoir ? "Yes" : "No"}
-                    </span>
-                  </div>
+                  <div className="flex justify-between items-center"><span className="text-muted">River & Sea</span><RiskBadge level={flood.riverAndSea} /></div>
+                  <div className="flex justify-between items-center"><span className="text-muted">Surface Water</span><RiskBadge level={flood.surfaceWater} /></div>
+                  <div className="flex justify-between items-center"><span className="text-muted">Flood Zone</span><span className="font-medium">Zone {flood.floodZone}</span></div>
+                  <div className="flex justify-between items-center"><span className="text-muted">Reservoir</span><span className="font-medium">{flood.reservoir ? "Yes" : "No"}</span></div>
                 </div>
-              ) : (
-                <p className="text-sm text-muted">Data unavailable</p>
-              )}
+              ) : <p className="text-sm text-muted">Data unavailable</p>}
             </div>
 
-            {/* Geology / Subsidence */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Mountain className="w-4 h-4 text-amber-600" />
@@ -314,57 +424,35 @@ export default function BuyerReportPage() {
               </div>
               {geology ? (
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted">Subsidence Risk</span>
-                    <RiskBadge level={geology.subsidenceRisk} />
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted">Shrink-Swell</span>
-                    <span className="font-medium">{geology.shrinkSwellClass}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted">Radon</span>
-                    <span className="font-medium">{geology.radonLevel}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted">Bedrock</span>
-                    <span className="font-medium text-xs">{geology.bedrockType}</span>
-                  </div>
+                  <div className="flex justify-between items-center"><span className="text-muted">Subsidence</span><RiskBadge level={geology.subsidenceRisk} /></div>
+                  <div className="flex justify-between items-center"><span className="text-muted">Shrink-Swell</span><span className="font-medium">{geology.shrinkSwellClass}</span></div>
+                  <div className="flex justify-between items-center"><span className="text-muted">Radon</span><span className="font-medium">{geology.radonLevel}</span></div>
+                  <div className="flex justify-between items-center"><span className="text-muted">Bedrock</span><span className="font-medium text-xs">{geology.bedrockType}</span></div>
                 </div>
-              ) : (
-                <p className="text-sm text-muted">Data unavailable</p>
-              )}
+              ) : <p className="text-sm text-muted">Data unavailable</p>}
             </div>
           </div>
 
-          {/* Planning Applications */}
+          {flood && flood.floodZone === "1" && flood.surfaceWater !== "high" && geology?.subsidenceRisk !== "high" && (
+            <InsightBox text="This property sits in Flood Zone 1 with low surface water risk and stable ground conditions — a positive sign for long-term structural integrity and insurance costs." />
+          )}
+
           {planning.length > 0 && (
             <div className="mt-6">
               <div className="flex items-center gap-2 mb-3">
                 <FileText className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-semibold">
-                  Nearby Planning Applications ({planning.length})
-                </h3>
+                <h3 className="text-sm font-semibold">Nearby Planning Applications ({planning.length})</h3>
               </div>
               <div className="space-y-3">
                 {planning.slice(0, 5).map((app, i) => (
-                  <div
-                    key={i}
-                    className="bg-background rounded-xl p-4 text-sm"
-                  >
+                  <div key={i} className="bg-background rounded-xl p-4 text-sm">
                     <div className="flex justify-between items-start">
                       <p className="font-medium">{app.description || app.reference}</p>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
-                          app.status === "Approved"
-                            ? "bg-green-50 text-green-700"
-                            : app.status === "Refused"
-                            ? "bg-red-50 text-red-700"
-                            : "bg-amber-50 text-amber-700"
-                        }`}
-                      >
-                        {app.status}
-                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        app.status === "Approved" ? "bg-green-50 text-green-700" :
+                        app.status === "Refused" ? "bg-red-50 text-red-700" :
+                        "bg-amber-50 text-amber-700"
+                      }`}>{app.status}</span>
                     </div>
                     <p className="text-muted mt-1">{app.address}</p>
                   </div>
@@ -374,41 +462,31 @@ export default function BuyerReportPage() {
           )}
         </ReportSection>
 
-        {/* 4. Area & Neighbourhood */}
-        <ReportSection
-          icon={MapPin}
-          title="Area & Neighbourhood"
-          subtitle="Crime, schools, transport, and more"
-        >
+        {/* ──────── 4. AREA & NEIGHBOURHOOD ──────── */}
+        <ReportSection icon={MapPin} title="Area & Neighbourhood" subtitle="Crime, schools, transport, and more">
           {/* Crime */}
           {crime && (
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-4">
                 <AlertTriangle className="w-4 h-4 text-primary" />
                 <h3 className="text-sm font-semibold">Crime Statistics</h3>
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full ${
-                    crime.comparisonToAverage === "below"
-                      ? "bg-green-50 text-green-700"
-                      : crime.comparisonToAverage === "above"
-                      ? "bg-red-50 text-red-700"
-                      : "bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  {crime.comparisonToAverage === "below"
-                    ? "Below Average"
-                    : crime.comparisonToAverage === "above"
-                    ? "Above Average"
-                    : "Average"}
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  crime.comparisonToAverage === "below" ? "bg-green-50 text-green-700" :
+                  crime.comparisonToAverage === "above" ? "bg-red-50 text-red-700" :
+                  "bg-amber-50 text-amber-700"
+                }`}>
+                  {crime.comparisonToAverage === "below" ? "Below Average" :
+                   crime.comparisonToAverage === "above" ? "Above Average" : "Average"}
                 </span>
               </div>
               <CrimeCategoryChart crime={crime} />
               <div className="mt-4">
-                <h4 className="text-xs font-semibold text-muted uppercase mb-2">
-                  12-Month Trend
-                </h4>
+                <h4 className="text-xs font-semibold text-muted uppercase mb-2">12-Month Trend</h4>
                 <CrimeTrendChart crime={crime} />
               </div>
+              {crime.comparisonToAverage === "below" && (
+                <InsightBox text={`Crime levels in this area are below the local average with ${crime.totalCrimes} reported incidents in the most recent month. This is a positive indicator for residential safety.`} />
+              )}
             </div>
           )}
 
@@ -421,27 +499,26 @@ export default function BuyerReportPage() {
               </div>
               <div className="space-y-2">
                 {schools.slice(0, 8).map((school, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-2 border-b border-border last:border-0 text-sm"
-                  >
-                    <div>
-                      <p className="font-medium">{school.name}</p>
-                      <p className="text-xs text-muted">
-                        {school.type} | {school.distanceKm}km away
-                      </p>
+                  <div key={i} className="flex items-center justify-between py-2.5 border-b border-border last:border-0 text-sm">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        school.ofstedRating === "Outstanding" ? "bg-green-100" :
+                        school.ofstedRating === "Good" ? "bg-blue-100" : "bg-gray-100"
+                      }`}>
+                        {school.ofstedRating === "Outstanding"
+                          ? <Star className="w-4 h-4 text-green-600" />
+                          : <School className="w-4 h-4 text-blue-600" />}
+                      </div>
+                      <div>
+                        <p className="font-medium">{school.name}</p>
+                        <p className="text-xs text-muted capitalize">{school.type} | {school.distanceKm}km</p>
+                      </div>
                     </div>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        school.ofstedRating === "Outstanding"
-                          ? "bg-green-50 text-green-700"
-                          : school.ofstedRating === "Good"
-                          ? "bg-blue-50 text-blue-700"
-                          : "bg-gray-100 text-gray-700"
-                      }`}
-                    >
-                      {school.ofstedRating}
-                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      school.ofstedRating === "Outstanding" ? "bg-green-50 text-green-700" :
+                      school.ofstedRating === "Good" ? "bg-blue-50 text-blue-700" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>{school.ofstedRating}</span>
                   </div>
                 ))}
               </div>
@@ -458,26 +535,28 @@ export default function BuyerReportPage() {
               {transport.nearestStations.length > 0 && (
                 <div className="space-y-2 text-sm">
                   {transport.nearestStations.slice(0, 5).map((station, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                    >
+                    <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                       <div>
                         <p className="font-medium">{station.name}</p>
-                        <p className="text-xs text-muted">
-                          {station.lines.slice(0, 3).join(", ")}
-                        </p>
+                        <div className="flex gap-1 mt-0.5 flex-wrap">
+                          {station.lines.slice(0, 3).map((line, j) => (
+                            <span key={j} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{line}</span>
+                          ))}
+                        </div>
                       </div>
-                      <span className="text-muted">{station.distanceKm}km</span>
+                      <div className="text-right shrink-0">
+                        <span className="text-muted">{station.distanceKm}km</span>
+                        <p className="text-xs text-muted">{Math.round(station.distanceKm / 5 * 60)} min walk</p>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
               {transport.commuteToCenter.length > 0 && (
-                <div className="mt-4 bg-background rounded-xl p-4">
-                  <p className="text-sm text-muted">Commute to Central London</p>
-                  <p className="text-lg font-heading font-bold mt-1">
-                    {transport.commuteToCenter[0].durationMinutes} minutes
+                <div className="mt-4 bg-primary-light rounded-xl p-4 flex items-center justify-between">
+                  <p className="text-sm text-primary font-medium">Commute to Central London</p>
+                  <p className="text-xl font-heading font-bold text-foreground">
+                    ~{transport.commuteToCenter[0].durationMinutes} min
                   </p>
                 </div>
               )}
@@ -493,15 +572,15 @@ export default function BuyerReportPage() {
               </div>
               <div className="grid grid-cols-3 gap-4 text-center text-sm">
                 <div className="bg-background rounded-xl p-3">
-                  <p className="text-muted">Avg Download</p>
-                  <p className="text-lg font-bold mt-1">{broadband.averageDownload} Mbps</p>
+                  <p className="text-xs text-muted">Avg Download</p>
+                  <p className="text-lg font-bold mt-1">{broadband.averageDownload} <span className="text-xs font-normal text-muted">Mbps</span></p>
                 </div>
                 <div className="bg-background rounded-xl p-3">
-                  <p className="text-muted">Superfast</p>
+                  <p className="text-xs text-muted">Superfast</p>
                   <p className="text-lg font-bold mt-1">{broadband.superFastAvailability}%</p>
                 </div>
                 <div className="bg-background rounded-xl p-3">
-                  <p className="text-muted">Ultrafast</p>
+                  <p className="text-xs text-muted">Ultrafast</p>
                   <p className="text-lg font-bold mt-1">{broadband.ultraFastAvailability}%</p>
                 </div>
               </div>
@@ -526,12 +605,15 @@ export default function BuyerReportPage() {
                 </div>
                 <div>
                   <span className="text-muted">Tenure Mix</span>
-                  <div className="flex gap-2 mt-1">
+                  <div className="flex gap-2 mt-1 flex-wrap">
                     <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
                       Owned {demographics.tenureMix.owned}%
                     </span>
                     <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">
                       Private rent {demographics.tenureMix.privateRented}%
+                    </span>
+                    <span className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">
+                      Social {demographics.tenureMix.socialRented}%
                     </span>
                   </div>
                 </div>
@@ -540,32 +622,36 @@ export default function BuyerReportPage() {
           )}
         </ReportSection>
 
-        {/* 5. Environmental */}
-        <ReportSection
-          icon={Wind}
-          title="Environmental"
-          subtitle="Air quality and green space"
-          unavailable={!airQuality}
-        >
+        {/* ──────── 5. NEIGHBOURHOOD VIBE ──────── */}
+        {vibeScores && (
+          <ReportSection icon={Sparkles} title="Neighbourhood Vibe" subtitle="What it feels like to live here">
+            <div className="space-y-3">
+              <VibeBar label="Walkability" score={vibeScores.walkability} icon={MapPin} />
+              <VibeBar label="Green Space" score={vibeScores.greenSpace} icon={TreePine} />
+              <VibeBar label="Food & Drink" score={vibeScores.foodAndDrink} icon={UtensilsCrossed} />
+              <VibeBar label="Family Friendly" score={vibeScores.familyFriendly} icon={Baby} />
+              <VibeBar label="Nightlife" score={vibeScores.nightlife} icon={Moon} />
+              <VibeBar label="Peace & Quiet" score={vibeScores.peaceAndQuiet} icon={Volume2} />
+            </div>
+            <div className="mt-4 bg-background rounded-xl p-4 flex items-center justify-between">
+              <span className="text-sm text-muted">Overall Vibe Score</span>
+              <span className="text-2xl font-heading font-bold text-primary">{vibeScores.overall}/10</span>
+            </div>
+          </ReportSection>
+        )}
+
+        {/* ──────── 6. ENVIRONMENTAL ──────── */}
+        <ReportSection icon={Wind} title="Environmental" subtitle="Air quality and green space" unavailable={!airQuality}>
           {airQuality && (
             <div>
               <div className="flex items-center gap-4 mb-4">
                 <div className="bg-background rounded-xl p-4 text-center">
-                  <p className="text-sm text-muted">DAQI Index</p>
-                  <p className="text-3xl font-heading font-bold mt-1">
-                    {airQuality.index}
-                  </p>
-                  <p
-                    className={`text-sm font-medium mt-1 ${
-                      airQuality.band === "Low"
-                        ? "text-green-600"
-                        : airQuality.band === "Moderate"
-                        ? "text-amber-600"
-                        : "text-red-600"
-                    }`}
-                  >
-                    {airQuality.band}
-                  </p>
+                  <p className="text-xs text-muted">DAQI Index</p>
+                  <p className="text-3xl font-heading font-bold mt-1">{airQuality.index}</p>
+                  <p className={`text-sm font-medium mt-1 ${
+                    airQuality.band === "Low" ? "text-green-600" :
+                    airQuality.band === "Moderate" ? "text-amber-600" : "text-red-600"
+                  }`}>{airQuality.band}</p>
                 </div>
                 <div className="flex-1">
                   <p className="text-sm text-muted">
@@ -576,9 +662,7 @@ export default function BuyerReportPage() {
                       {airQuality.pollutants.map((p, i) => (
                         <div key={i} className="flex justify-between text-sm">
                           <span className="text-muted">{p.name}</span>
-                          <span className="font-medium">
-                            {p.value} {p.unit} ({p.band})
-                          </span>
+                          <span className="font-medium">{p.value} {p.unit} ({p.band})</span>
                         </div>
                       ))}
                     </div>
@@ -590,16 +674,15 @@ export default function BuyerReportPage() {
         </ReportSection>
       </div>
 
-      {/* Data Sources Footer */}
+      {/* ──────── DATA SOURCES FOOTER ──────── */}
       <div className="mt-8 text-center text-xs text-muted">
         <p>
           Data sourced from: Land Registry, EPC Open Data, Environment Agency,
           Police UK, GIAS, TfL, Ofcom, ONS, BGS, DEFRA, PlanIt, OpenStreetMap
         </p>
         <p className="mt-1">
-          Report generated on{" "}
-          {new Date(report.generatedAt).toLocaleDateString("en-GB")}. Data may
-          not reflect the most recent changes.
+          Report generated on {new Date(report.generatedAt).toLocaleDateString("en-GB")}.
+          Data may not reflect the most recent changes.
         </p>
       </div>
     </div>

@@ -84,43 +84,21 @@ export function PostcodeSearch({
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        // Fetch real addresses from Land Registry Price Paid Data
-        const formatted = trimmed.toUpperCase();
-        const params = new URLSearchParams({
-          "propertyAddress.postcode": formatted,
-          _pageSize: "100",
-          _sort: "-transactionDate",
-        });
-
+        // Use our server-side proxy to avoid CORS issues
         const res = await fetch(
-          `https://landregistry.data.gov.uk/data/ppi/transaction-record.json?${params}`,
+          `/api/address-lookup?postcode=${encodeURIComponent(trimmed.toUpperCase())}`,
           { signal: controller.signal }
         );
 
-        if (!res.ok) throw new Error("Land Registry API error");
+        if (!res.ok) throw new Error("Address lookup failed");
 
         const json = await res.json();
-        const items = json.result?.items || [];
-
-        // Extract unique addresses
-        const seen = new Set<string>();
-        const results: AddressResult[] = [];
-
-        for (const item of items) {
-          const addr = item.propertyAddress;
-          if (!addr) continue;
-          const parts = [addr.paon, addr.street, addr.town].filter(Boolean);
-          const full = parts.join(", ");
-          const key = full.toLowerCase();
-
-          if (!seen.has(key) && full) {
-            seen.add(key);
-            results.push({ address: full, source: "land-registry" });
-          }
-        }
-
-        // Sort alphabetically for easier scanning
-        results.sort((a, b) => a.address.localeCompare(b.address));
+        const results: AddressResult[] = (json.addresses || []).map(
+          (a: { address: string }) => ({
+            address: a.address,
+            source: "land-registry" as const,
+          })
+        );
 
         setAddresses(results);
         if (results.length > 0) {

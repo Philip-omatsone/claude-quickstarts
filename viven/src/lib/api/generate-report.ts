@@ -1,4 +1,5 @@
 import { BuyerReport, RentalReport, GeocodeResult } from "./types";
+import { calculateVivenVerdict, calculateVibeScores } from "./scoring";
 import { getTransactionHistory } from "./sources/land-registry";
 import { getEPCRating } from "./sources/epc";
 import { getFloodRisk } from "./sources/environment-agency";
@@ -64,12 +65,42 @@ export async function generateBuyerReport(
     }
   }
 
+  // Calculate Viven Verdict score
+  const amenities = amenitiesRes.data || [];
+  const schools = schoolsRes.data || [];
+
+  const verdict = calculateVivenVerdict(
+    {
+      flood: floodRes.data,
+      geology: geologyRes.data,
+      crime: crimeRes.data,
+      schools,
+      transport: transportRes.data,
+      epc: epcRes.data,
+      broadband: broadbandRes.data,
+      amenities,
+      airQuality: airQualityRes.data,
+      priceHistory,
+    },
+    geocode.admin_district
+  );
+
+  // Calculate Vibe Scores
+  const vibeScores = calculateVibeScores(
+    amenities,
+    transportRes.data,
+    crimeRes.data,
+    airQualityRes.data,
+  );
+
   const report: BuyerReport = {
     id: generateId(),
     postcode,
     address: address || postcode,
     generatedAt: new Date().toISOString(),
     geocode,
+    verdict,
+    vibeScores,
     propertyOverview: {
       epc: epcRes.data,
       lastSale:
@@ -83,11 +114,11 @@ export async function generateBuyerReport(
     },
     areaInsights: {
       crime: crimeRes.data,
-      schools: schoolsRes.data || [],
+      schools,
       transport: transportRes.data,
       broadband: broadbandRes.data,
       demographics: demographicsRes.data,
-      amenities: amenitiesRes.data || [],
+      amenities,
     },
     environmental: {
       airQuality: airQualityRes.data,
