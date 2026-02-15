@@ -131,6 +131,15 @@ function buildMethodologyText(
   return parts.join(" | ");
 }
 
+// Safely extract a string from a value that might be an RDF literal object
+// (Land Registry Linked Data API returns {_value, _datatype, _lang} objects)
+function safeStr(val: unknown): string {
+  if (typeof val === "string") return val;
+  if (val && typeof val === "object" && "_value" in val)
+    return String((val as { _value: unknown })._value);
+  return String(val ?? "");
+}
+
 // Enrich comparables with EPC data (floor area, bedrooms)
 export function enrichComparableWithEPC(
   transaction: PropertyTransaction,
@@ -153,9 +162,10 @@ export function enrichComparableWithEPC(
     floorAreaSqm && floorAreaSqm > 0
       ? Math.round(floorAreaSqm * 10.764)
       : null;
+  const price = typeof transaction.price === "number" ? transaction.price : Number(transaction.price) || 0;
   const pricePerSqft =
     floorAreaSqft && floorAreaSqft > 0
-      ? Math.round(transaction.price / floorAreaSqft)
+      ? Math.round(price / floorAreaSqft)
       : null;
 
   const propertyTypeMap: Record<string, string> = {
@@ -165,19 +175,22 @@ export function enrichComparableWithEPC(
     F: "Flat",
   };
 
+  const txnPropertyType = safeStr(transaction.propertyType);
+  const txnTenure = safeStr(transaction.tenure);
+
   return {
-    address: transaction.address,
-    price: transaction.price,
-    date: transaction.dateOfTransfer,
+    address: safeStr(transaction.address),
+    price,
+    date: safeStr(transaction.dateOfTransfer),
     propertyType:
       epc?.propertyType ||
-      propertyTypeMap[transaction.propertyType] ||
-      transaction.propertyType,
+      propertyTypeMap[txnPropertyType] ||
+      txnPropertyType,
     bedrooms: epc?.numberOfRooms || null,
     floorAreaSqm,
     floorAreaSqft,
     pricePerSqft,
-    tenure: transaction.tenure === "F" ? "Freehold" : "Leasehold",
+    tenure: txnTenure === "F" ? "Freehold" : "Leasehold",
     distance,
   };
 }

@@ -7,6 +7,23 @@ import {
 // Land Registry Price Paid Data - uses their Linked Data API
 const PPD_API = "https://landregistry.data.gov.uk/data/ppi/transaction-record";
 
+// The Linked Data API returns JSON-LD where string/number values may be
+// wrapped as RDF literal objects: { _value: "...", _datatype: "...", _lang: "..." }
+// These helpers safely extract the primitive value.
+function rdfStr(val: unknown): string {
+  if (typeof val === "string") return val;
+  if (val && typeof val === "object" && "_value" in val)
+    return String((val as { _value: unknown })._value);
+  return String(val ?? "");
+}
+
+function rdfNum(val: unknown): number {
+  if (typeof val === "number") return val;
+  if (val && typeof val === "object" && "_value" in val)
+    return Number((val as { _value: unknown })._value) || 0;
+  return Number(val) || 0;
+}
+
 export async function getTransactionHistory(
   postcode: string,
   address?: string
@@ -32,27 +49,26 @@ export async function getTransactionHistory(
 
     const allTransactions: PropertyTransaction[] = items.map(
       (item: Record<string, unknown>) => {
-        const addr = item.propertyAddress as Record<string, string> | undefined;
+        const addr = item.propertyAddress as Record<string, unknown> | undefined;
+        const paon = addr ? rdfStr(addr.paon) : "";
+        const street = addr ? rdfStr(addr.street) : "";
+        const town = addr ? rdfStr(addr.town) : "";
+        const pc = addr ? rdfStr(addr.postcode) : "";
+
+        const propType = item.propertyType as Record<string, unknown> | undefined;
+        const estType = item.estateType as Record<string, unknown> | undefined;
+        const txnCat = item.transactionCategory as Record<string, unknown> | undefined;
+
         return {
-          transactionId: (item.transactionId as string) || "",
-          price: (item.pricePaid as number) || 0,
-          dateOfTransfer: (item.transactionDate as string) || "",
-          address: addr
-            ? [addr.paon, addr.street, addr.town]
-                .filter(Boolean)
-                .join(", ")
-            : "",
-          postcode: addr?.postcode || postcode,
-          propertyType: mapPropertyType(
-            (item.propertyType as Record<string, string>)?.prefLabel || ""
-          ),
-          newBuild: (item.newBuild as boolean) || false,
-          tenure: mapTenure(
-            (item.estateType as Record<string, string>)?.prefLabel || ""
-          ),
-          category:
-            (item.transactionCategory as Record<string, string>)?.prefLabel ||
-            "Standard",
+          transactionId: rdfStr(item.transactionId),
+          price: rdfNum(item.pricePaid),
+          dateOfTransfer: rdfStr(item.transactionDate),
+          address: [paon, street, town].filter(Boolean).join(", "),
+          postcode: pc || postcode,
+          propertyType: mapPropertyType(rdfStr(propType?.prefLabel)),
+          newBuild: Boolean(item.newBuild),
+          tenure: mapTenure(rdfStr(estType?.prefLabel)),
+          category: rdfStr(txnCat?.prefLabel) || "Standard",
         };
       }
     );

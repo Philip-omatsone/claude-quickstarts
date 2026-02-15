@@ -37,6 +37,16 @@ import { PriceChart } from "@/components/report/PriceChart";
 import { CrimeCategoryChart, CrimeTrendChart } from "@/components/report/CrimeChart";
 
 // --- Helpers ---
+
+// Safely extract a string from a value that might be an RDF literal object
+// ({ _value, _datatype, _lang }) returned by the Land Registry Linked Data API
+const safeStr = (val: unknown): string => {
+  if (typeof val === "string") return val;
+  if (val && typeof val === "object" && "_value" in (val as Record<string, unknown>))
+    return String((val as Record<string, unknown>)._value);
+  return String(val ?? "");
+};
+
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-GB", {
     style: "currency",
@@ -123,16 +133,21 @@ function SourceAttribution({ sources }: { sources: string[] }) {
 }
 
 function EnrichedCompRow({ comp }: { comp: EnrichedComparable }) {
+  const date = safeStr(comp.date);
+  const propertyType = safeStr(comp.propertyType);
+  const tenure = safeStr(comp.tenure);
+  const address = safeStr(comp.address);
+
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-border last:border-0 text-sm">
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{comp.address}</p>
+        <p className="font-medium truncate">{address}</p>
         <div className="flex gap-2 text-xs text-muted mt-0.5 flex-wrap">
-          <span>{new Date(comp.date).toLocaleDateString("en-GB")}</span>
-          {comp.propertyType && <span>{comp.propertyType}</span>}
+          <span>{date ? new Date(date).toLocaleDateString("en-GB") : ""}</span>
+          {propertyType && <span>{propertyType}</span>}
           {comp.bedrooms && <span>{comp.bedrooms} bed</span>}
           {comp.floorAreaSqm && <span>{comp.floorAreaSqm}m&sup2;</span>}
-          <span>{comp.tenure}</span>
+          {tenure && <span>{tenure}</span>}
         </div>
       </div>
       <div className="text-right shrink-0 ml-4">
@@ -324,13 +339,13 @@ export default function BuyerReportPage() {
         <ReportSection icon={Home} title="Property Overview" subtitle="Key facts about the property">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border">
             {[
-              { label: "Type", value: epc?.propertyType || (lastSale?.propertyType === "D" ? "Detached" : lastSale?.propertyType === "S" ? "Semi-Detached" : lastSale?.propertyType === "T" ? "Terraced" : lastSale?.propertyType === "F" ? "Flat" : "N/A") },
+              { label: "Type", value: epc?.propertyType || (safeStr(lastSale?.propertyType) === "D" ? "Detached" : safeStr(lastSale?.propertyType) === "S" ? "Semi-Detached" : safeStr(lastSale?.propertyType) === "T" ? "Terraced" : safeStr(lastSale?.propertyType) === "F" ? "Flat" : "N/A") },
               { label: "Rooms", value: epc?.numberOfRooms ? String(epc.numberOfRooms) : "N/A" },
               { label: "Floor Area", value: epc && epc.totalFloorArea > 0 ? `${epc.totalFloorArea} m\u00B2` : "N/A" },
-              { label: "Tenure", value: lastSale ? (lastSale.tenure === "F" ? "Freehold" : "Leasehold") : "N/A" },
+              { label: "Tenure", value: lastSale ? (safeStr(lastSale.tenure) === "F" ? "Freehold" : "Leasehold") : "N/A" },
               { label: "Built Form", value: epc?.builtForm || "N/A" },
               { label: "Last Sale", value: lastSale ? formatPrice(lastSale.price) : "N/A" },
-              { label: "Sale Date", value: lastSale ? new Date(lastSale.dateOfTransfer).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A" },
+              { label: "Sale Date", value: lastSale ? new Date(safeStr(lastSale.dateOfTransfer)).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A" },
               { label: "EPC Score", value: epc ? `${epc.currentEnergyEfficiency}/100` : "N/A" },
             ].map((item) => (
               <div key={item.label} className="bg-white p-3 text-center">
@@ -494,9 +509,9 @@ export default function BuyerReportPage() {
                     {priceHistory.comparableSales.slice(0, 5).map((sale, i) => (
                       <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                         <div>
-                          <p className="text-sm font-medium">{sale.address}</p>
+                          <p className="text-sm font-medium">{safeStr(sale.address)}</p>
                           <p className="text-xs text-muted">
-                            {new Date(sale.dateOfTransfer).toLocaleDateString("en-GB")}
+                            {new Date(safeStr(sale.dateOfTransfer)).toLocaleDateString("en-GB")}
                           </p>
                         </div>
                         <p className="font-semibold">{formatPrice(sale.price)}</p>
