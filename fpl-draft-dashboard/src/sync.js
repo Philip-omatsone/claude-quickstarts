@@ -17,8 +17,11 @@ function getSyncStatus() {
     lastSyncedEvent: db.getLastSyncedEvent(),
     leagueId: db.getMeta('league_id'),
     log: syncLog.slice(-50),
+    error: syncError,
   };
 }
+
+let syncError = null;
 
 async function syncAll(leagueId) {
   if (syncInProgress) {
@@ -27,6 +30,7 @@ async function syncAll(leagueId) {
 
   syncInProgress = true;
   syncLog = [];
+  syncError = null;
 
   try {
     db.setMeta('league_id', leagueId);
@@ -221,6 +225,7 @@ async function syncAll(leagueId) {
     log('Sync complete!');
   } catch (err) {
     db.flushDb();
+    syncError = err.message;
     log(`Sync error: ${err.message}`);
     throw err;
   } finally {

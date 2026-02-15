@@ -237,9 +237,21 @@ app.get('/api/transactions', (req, res) => {
 
 // Trigger sync
 app.post('/api/sync', async (req, res) => {
-  const { leagueId } = req.body;
+  let { leagueId } = req.body;
   if (!leagueId) {
     return res.status(400).json({ error: 'leagueId is required' });
+  }
+
+  // Extract numeric league ID if user pasted a URL
+  const urlMatch = String(leagueId).match(/league\/(\d+)/);
+  if (urlMatch) {
+    leagueId = urlMatch[1];
+  }
+  // Strip any non-numeric characters
+  leagueId = String(leagueId).replace(/\D/g, '');
+
+  if (!leagueId) {
+    return res.status(400).json({ error: 'Invalid league ID. Please enter the numeric league ID.' });
   }
 
   try {

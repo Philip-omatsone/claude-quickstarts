@@ -100,6 +100,13 @@ async function pollSync() {
 
     if (status && status.inProgress) {
       setTimeout(poll, 1500);
+    } else if (status && status.error) {
+      progressEl.style.width = '100%';
+      progressEl.style.backgroundColor = '#e90052';
+      setTimeout(() => {
+        document.getElementById('sync-overlay').classList.add('hidden');
+        showSyncError(status.error);
+      }, 500);
     } else {
       progressEl.style.width = '100%';
       setTimeout(async () => {
