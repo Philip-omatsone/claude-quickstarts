@@ -2,7 +2,20 @@ import { v4 as uuid } from 'uuid';
 import { db } from './database';
 import type { MetricType, MetricUnit, HeadlineCategory, HeadlineImpact } from '../types';
 
+const SEED_VERSION = '2026-02';
+
 export async function seedDemoData() {
+  const currentSeedVersion = localStorage.getItem('seed_version');
+  if (currentSeedVersion !== SEED_VERSION) {
+    // Clear stale seed data and re-seed with updated dates
+    await db.originators.clear();
+    await db.metrics.clear();
+    await db.headlines.clear();
+    await db.covenants.clear();
+    await db.analyses.clear();
+    localStorage.setItem('seed_version', SEED_VERSION);
+  }
+
   const count = await db.originators.count();
   if (count > 0) return;
 
