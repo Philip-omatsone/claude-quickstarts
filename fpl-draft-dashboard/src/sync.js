@@ -217,8 +217,10 @@ async function syncAll(leagueId) {
     }
     db.setMeta('last_sync_time', new Date().toISOString());
 
+    db.flushDb();
     log('Sync complete!');
   } catch (err) {
+    db.flushDb();
     log(`Sync error: ${err.message}`);
     throw err;
   } finally {

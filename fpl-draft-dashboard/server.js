@@ -265,6 +265,11 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`FPL Draft Dashboard running at http://localhost:${PORT}`);
+db.initDb().then(() => {
+  app.listen(PORT, () => {
+    console.log(`FPL Draft Dashboard running at http://localhost:${PORT}`);
+  });
+}).catch((err) => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
 });

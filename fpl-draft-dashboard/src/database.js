@@ -1,20 +1,112 @@
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
 
 const DB_PATH = path.join(__dirname, '..', 'data', 'fpl-draft.db');
 
-let db;
+let db = null;
+let saveTimer = null;
+
+// --- Persistence helpers ---
+
+function persistToFile() {
+  if (db) {
+    const data = db.export();
+    fs.writeFileSync(DB_PATH, Buffer.from(data));
+  }
+}
+
+function scheduleSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistToFile();
+  }, 1000);
+}
+
+function flushDb() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  persistToFile();
+}
+
+// --- sql.js compatibility wrapper ---
+// Mimics the better-sqlite3 API so the rest of the code stays the same.
+
+function createStatement(sql) {
+  return {
+    run(params) {
+      if (params && typeof params === 'object' && !Array.isArray(params)) {
+        const mapped = {};
+        for (const [k, v] of Object.entries(params)) {
+          mapped['@' + k] = v === null || v === undefined ? null : v;
+        }
+        db.run(sql, mapped);
+      } else {
+        db.run(sql);
+      }
+      scheduleSave();
+    },
+    get(...args) {
+      const stmt = db.prepare(sql);
+      try {
+        if (args.length > 0) {
+          stmt.bind(args);
+        }
+        if (stmt.step()) {
+          return stmt.getAsObject();
+        }
+        return undefined;
+      } finally {
+        stmt.free();
+      }
+    },
+    all(...args) {
+      const stmt = db.prepare(sql);
+      try {
+        if (args.length > 0) {
+          stmt.bind(args);
+        }
+        const results = [];
+        while (stmt.step()) {
+          results.push(stmt.getAsObject());
+        }
+        return results;
+      } finally {
+        stmt.free();
+      }
+    },
+  };
+}
+
+// --- Initialization ---
+
+async function initDb() {
+  if (db) return;
+  const SQL = await initSqlJs();
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  if (fs.existsSync(DB_PATH)) {
+    const buffer = fs.readFileSync(DB_PATH);
+    db = new SQL.Database(buffer);
+  } else {
+    db = new SQL.Database();
+  }
+  db.run('PRAGMA foreign_keys = ON');
+  initSchema();
+
+  process.on('exit', flushDb);
+  process.on('SIGINT', () => { flushDb(); process.exit(); });
+  process.on('SIGTERM', () => { flushDb(); process.exit(); });
+}
 
 function getDb() {
-  if (!db) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-    initSchema();
-  }
-  return db;
+  if (!db) throw new Error('Database not initialized. Call initDb() first.');
+  return {
+    prepare: (sql) => createStatement(sql),
+    exec: (sql) => db.exec(sql),
+  };
 }
 
 function initSchema() {
@@ -119,7 +211,7 @@ function getMeta(key) {
 }
 
 function setMeta(key, value) {
-  getDb().prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)').run(key, String(value));
+  getDb().prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (@key, @value)').run({ key, value: String(value) });
 }
 
 // --- Upsert helpers ---
@@ -242,7 +334,6 @@ function getTeamPicks(managerId, event) {
 }
 
 function getLatestTeamPicks() {
-  // Get picks from the most recent gameweek for each manager
   return getDb().prepare(`
     SELECT tp.* FROM team_picks tp
     INNER JOIN (
@@ -277,6 +368,8 @@ function setLastSyncedEvent(event) {
 }
 
 module.exports = {
+  initDb,
+  flushDb,
   getDb,
   getMeta,
   setMeta,
