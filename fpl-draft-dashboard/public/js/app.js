@@ -509,10 +509,10 @@ function renderTeams(ratings) {
       <div class="squad-card">
         <h4>${escapeHtml(r.manager.player_name)} <span class="mgr-sub">— ${escapeHtml(r.manager.name)}</span></h4>
         <div style="margin-bottom:0.5rem;font-size:0.8rem;color:var(--text-secondary)">
-          Avg Form: ${r.avgForm} | Avg ICT: ${r.avgIct} | Pts Scored: ${r.actualPoints}
+          Avg ICT: ${r.avgIct} | Pts Scored: ${r.actualPoints}
         </div>
         <table>
-          <thead><tr><th>Player</th><th>Pos</th><th>Pts</th><th>Form</th></tr></thead>
+          <thead><tr><th>Player</th><th>Pos</th><th>Pts</th></tr></thead>
           <tbody>
             ${r.squad
               .sort((a, b) => a.position - b.position)
@@ -521,7 +521,6 @@ function renderTeams(ratings) {
                   <td>${escapeHtml(p.web_name)}</td>
                   <td><span class="pos-badge ${POS_CLASSES[p.position]}">${POS_LABELS[p.position]}</span></td>
                   <td>${p.total_points}</td>
-                  <td>${p.form}</td>
                 </tr>
               `).join('')}
           </tbody>
@@ -760,7 +759,64 @@ function renderDraftAnalysis(data) {
         `).join('')}
       </div>
     </div>
+    <div style="margin-top:1.5rem">
+      <h4 style="margin-bottom:0.5rem">Regret Index by Manager</h4>
+      <div class="chart-container" style="height:${Math.max(300, (data.picks || []).length * 18)}px">
+        <canvas id="regret-chart"></canvas>
+      </div>
+    </div>
   `;
+
+  // Build per-manager regret chart with player names
+  if (data.picks && data.picks.length > 0) {
+    const sorted = [...data.picks]
+      .filter(p => p.player)
+      .sort((a, b) => b.valueScore - a.valueScore);
+
+    const labels = sorted.map(p =>
+      `${p.player?.web_name || '?'} (${p.manager?.player_name || '?'}, Rd${p.round})`
+    );
+    const values = sorted.map(p => p.valueScore);
+    const bgColors = values.map(v =>
+      v >= 0 ? 'rgba(61,153,112,0.5)' : 'rgba(192,57,43,0.5)'
+    );
+    const borderColors = values.map(v =>
+      v >= 0 ? '#3d9970' : '#c0392b'
+    );
+
+    destroyChart('regret-chart');
+    const ctx = document.getElementById('regret-chart').getContext('2d');
+    charts['regret-chart'] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Value vs Expected',
+          data: values,
+          backgroundColor: bgColors,
+          borderColor: borderColors,
+          borderWidth: 1,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            title: { display: true, text: 'Value Score (pts vs round avg)', color: CHART_TICK },
+            ticks: { color: CHART_TICK },
+            grid: { color: CHART_GRID },
+          },
+          y: {
+            ticks: { color: CHART_TICK, font: { size: 10 } },
+            grid: { display: false },
+          },
+        },
+      },
+    });
+  }
 }
 
 // --- Transactions Tab ---
@@ -790,7 +846,10 @@ function filterTransactions() {
   let filtered = allTransactions.filter((t) => {
     if (mgrFilter && t.manager_id !== parseInt(mgrFilter)) return false;
     if (typeFilter && t.kind !== typeFilter) return false;
-    if (resultFilter && t.result !== resultFilter) return false;
+    if (resultFilter) {
+      if (resultFilter === 'a' && t.result !== 'a') return false;
+      if (resultFilter === 'di' && t.result === 'a') return false; // show only non-accepted
+    }
     return true;
   });
 
@@ -802,7 +861,7 @@ function filterTransactions() {
         : '<span class="tx-badge tx-free">Free Agent</span>';
       const resultBadge = t.result === 'a'
         ? '<span class="tx-badge tx-accepted">Accepted</span>'
-        : '<span class="tx-badge tx-declined">Declined</span>';
+        : `<span class="tx-badge tx-declined">${t.result === 'di' ? 'Declined' : t.result === 'd' ? 'Declined' : 'Failed'}</span>`;
       const date = t.added ? new Date(t.added).toLocaleDateString() : '-';
 
       return `<tr>
@@ -899,7 +958,7 @@ async function loadWhatIf() {
   const netPrefix = data.totalNet >= 0 ? '+' : '';
   const dataNote = data.hasGwScores
     ? 'Points calculated from actual gameweek data since each transfer'
-    : 'Using season total points (re-sync to get per-gameweek accuracy)';
+    : 'Estimated from season points proportional to GWs since transfer (re-sync for exact data)';
 
   let summaryHtml = `
     <div class="whatif-summary">

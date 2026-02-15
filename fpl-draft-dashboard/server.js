@@ -425,6 +425,9 @@ app.get('/api/what-if/:managerId', (req, res) => {
     const mgrTxs = txs.filter(t => t.manager_id === managerId && t.result === 'a');
 
     const hasGwScores = db.getPlayerGwScoreCount() > 0;
+    const gameweeks = db.getGameweekScores();
+    const allEvents = [...new Set(gameweeks.map(g => g.event))].sort((a, b) => a - b);
+    const currentEvent = allEvents.length > 0 ? allEvents[allEvents.length - 1] : 0;
 
     const transfers = mgrTxs.map(t => {
       const playerOut = playerMap[t.player_out_id];
@@ -436,10 +439,17 @@ app.get('/api/what-if/:managerId', (req, res) => {
       if (hasGwScores) {
         pointsOutSince = db.getPlayerPointsSinceEvent(t.player_out_id, t.event);
         pointsInSince = db.getPlayerPointsSinceEvent(t.player_in_id, t.event);
-      } else {
-        // Fallback: use total season points as rough comparison
-        pointsOutSince = playerOut ? playerOut.total_points : 0;
-        pointsInSince = playerIn ? playerIn.total_points : 0;
+      } else if (currentEvent > 0 && t.event > 0) {
+        // Estimate points since transfer proportionally
+        const gwsSinceTransfer = currentEvent - t.event;
+        if (gwsSinceTransfer > 0) {
+          pointsOutSince = playerOut
+            ? Math.round(playerOut.total_points * (gwsSinceTransfer / currentEvent))
+            : 0;
+          pointsInSince = playerIn
+            ? Math.round(playerIn.total_points * (gwsSinceTransfer / currentEvent))
+            : 0;
+        }
       }
 
       const netImpact = pointsInSince - pointsOutSince;

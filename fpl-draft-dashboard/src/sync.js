@@ -328,7 +328,19 @@ async function syncAll(leagueId) {
       for (let gw = gwStartEvent; gw <= currentEvent; gw++) {
         try {
           const live = await api.getEventLive(gw);
-          const liveElements = live.elements || [];
+          const rawElements = live.elements;
+          let liveElements;
+          if (Array.isArray(rawElements)) {
+            liveElements = rawElements;
+          } else if (rawElements && typeof rawElements === 'object') {
+            // FPL Draft API returns elements as an object keyed by player ID
+            liveElements = Object.entries(rawElements).map(([id, data]) => ({
+              id: parseInt(id),
+              ...(typeof data === 'object' ? data : {}),
+            }));
+          } else {
+            liveElements = [];
+          }
           for (const el of liveElements) {
             const stats = el.stats || {};
             db.upsertPlayerGwScore({
@@ -376,13 +388,15 @@ async function syncAll(leagueId) {
       if (Array.isArray(txList) && txList.length > 0) {
         const entryToMgr = {};
         for (const mgr of managers) {
-          const eid = mgr.entry_id || mgr.id;
-          entryToMgr[eid] = mgr.id;
+          // Map entry_id -> manager.id (league_entry)
+          if (mgr.entry_id) entryToMgr[mgr.entry_id] = mgr.id;
+          // Also map league_entry_id -> itself (in case API returns league_entry)
+          entryToMgr[mgr.id] = mgr.id;
         }
 
         db.clearTransactions();
         for (const t of txList) {
-          const managerId = entryToMgr[t.entry] || t.entry;
+          const managerId = entryToMgr[t.entry] || entryToMgr[t.league_entry] || t.entry;
           db.insertTransaction({
             manager_id: managerId,
             event: t.event || 0,
