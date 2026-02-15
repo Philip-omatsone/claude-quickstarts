@@ -38,6 +38,29 @@ async function callClaude(
   return data.content?.[0]?.text ?? '';
 }
 
+/**
+ * Extract the first valid JSON object from a string that may contain
+ * surrounding text, markdown code fences, or other preamble.
+ */
+function extractJson(raw: string): string {
+  // Strip markdown code fences first
+  let str = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+  // Find the outermost { ... } by tracking brace depth
+  const start = str.indexOf('{');
+  if (start === -1) throw new SyntaxError('No JSON object found in response');
+
+  let depth = 0;
+  for (let i = start; i < str.length; i++) {
+    if (str[i] === '{') depth++;
+    else if (str[i] === '}') depth--;
+    if (depth === 0) return str.slice(start, i + 1);
+  }
+
+  // If braces are unbalanced, try parsing from the opening brace anyway
+  return str.slice(start);
+}
+
 // --- PDF metric extraction via Claude ---
 
 export interface AiExtractedMetric {
@@ -89,10 +112,9 @@ export async function extractMetricsWithAi(pdfText: string): Promise<{
     `Extract all financial metrics from this PDF text:\n\n${truncated}`
   );
 
-  // Parse JSON — handle potential markdown code blocks
-  const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  // Parse JSON — handle markdown code blocks and surrounding text
   try {
-    return JSON.parse(jsonStr);
+    return JSON.parse(extractJson(raw));
   } catch {
     throw new Error('Claude returned invalid JSON. Please try again or use manual entry.');
   }
@@ -141,9 +163,8 @@ export async function analyseCompany(
     `Analyse this originator:\n\nCompany: ${companyName}\n\nMetrics:\n${metricsContext}\n\nCovenants:\n${covenantsContext}`
   );
 
-  const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
   try {
-    return JSON.parse(jsonStr);
+    return JSON.parse(extractJson(raw));
   } catch {
     throw new Error('Claude returned invalid analysis. Please try again.');
   }
@@ -186,9 +207,8 @@ export async function analyseDocument(pdfText: string): Promise<DocumentAnalysis
     `Analyse this document:\n\n${truncated}`
   );
 
-  const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
   try {
-    return JSON.parse(jsonStr);
+    return JSON.parse(extractJson(raw));
   } catch {
     throw new Error('Claude returned invalid analysis. Please try again.');
   }
