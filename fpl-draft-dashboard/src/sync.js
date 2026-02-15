@@ -72,9 +72,38 @@ async function syncAll(leagueId) {
     const currentEvent = game.current_event || 0;
     log(`Current gameweek: ${currentEvent}`);
 
-    // 3. Fetch league details
+    // 3. Fetch league details (auto-detect entry ID vs league ID)
     log('Fetching league details...');
-    const league = await api.getLeagueDetails(leagueId);
+    let league;
+    try {
+      league = await api.getLeagueDetails(leagueId);
+    } catch (err) {
+      if (err.message.includes('404')) {
+        // ID might be an entry/team ID instead of a league ID — look up the league
+        log(`League ID ${leagueId} not found. Checking if it's an entry/team ID...`);
+        try {
+          const entry = await api.getEntryDetails(leagueId);
+          const leagues = entry.entry && entry.entry.league_set
+            ? entry.entry.league_set
+            : (entry.league_set || []);
+          if (leagues.length > 0) {
+            leagueId = String(leagues[0]);
+            log(`Found league ID ${leagueId} from entry. Fetching league details...`);
+            db.setMeta('league_id', leagueId);
+            league = await api.getLeagueDetails(leagueId);
+          } else {
+            throw new Error('Could not find a league for this entry. Make sure you are in a draft league.');
+          }
+        } catch (entryErr) {
+          if (entryErr.message.includes('404')) {
+            throw new Error(`ID ${leagueId} is not a valid league or entry ID. Check your ID and try again.`);
+          }
+          throw entryErr;
+        }
+      } else {
+        throw err;
+      }
+    }
 
     // Sync managers from standings
     const standings = league.standings || [];

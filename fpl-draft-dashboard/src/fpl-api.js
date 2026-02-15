@@ -102,6 +102,11 @@ async function getEventLive(event) {
   return rateLimitedFetch(`${BASE_URL}/event/${event}/live`);
 }
 
+// Get entry (team) details to find league ID
+async function getEntryDetails(entryId) {
+  return rateLimitedFetch(`${BASE_URL}/entry/${entryId}/public`);
+}
+
 module.exports = {
   getBootstrapStatic,
   getGame,
@@ -111,4 +116,5 @@ module.exports = {
   getDraftChoices,
   getTransactions,
   getEventLive,
+  getEntryDetails,
 };
