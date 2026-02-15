@@ -19,8 +19,8 @@ export async function seedDemoData() {
     { id: org3Id, name: 'Shawbrook Business Finance', sector: 'Asset Finance', region: 'North West', createdAt: now },
   ]);
 
-  const periods = ['2024-Q1', '2024-Q2', '2024-Q3', '2024-Q4', '2025-Q1', '2025-Q2'];
-  const baseDate = new Date('2024-03-31');
+  const periods = ['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4', '2026-Q1', '2026-Q2'];
+  const baseDate = new Date('2025-03-31');
 
   interface MetricDef { metricType: MetricType; label: string; unit: MetricUnit; values: Record<string, number[]> }
 
@@ -187,14 +187,14 @@ export async function seedDemoData() {
 
   // Headlines
   const headlineDefs = [
-    { title: 'Aldermore reports 12% AuM growth in Q2 2025', source: 'Financial Times', category: 'earnings' as HeadlineCategory, impact: 'high' as HeadlineImpact, date: new Date('2025-07-15'), originatorId: org1Id },
-    { title: 'FCA tightens asset finance lending standards', source: 'Reuters', category: 'regulatory' as HeadlineCategory, impact: 'high' as HeadlineImpact, date: new Date('2025-06-20') },
-    { title: 'UK SME lending outlook upgraded by Bank of England', source: 'Bloomberg', category: 'market' as HeadlineCategory, impact: 'medium' as HeadlineImpact, date: new Date('2025-06-10') },
-    { title: 'Close Brothers Leasing arrears tick up in Q1', source: 'S&P Global', category: 'risk' as HeadlineCategory, impact: 'high' as HeadlineImpact, date: new Date('2025-05-28'), originatorId: org2Id },
-    { title: 'British Business Bank expands Enable Funding programme', source: 'GOV.UK', category: 'general' as HeadlineCategory, impact: 'medium' as HeadlineImpact, date: new Date('2025-05-15') },
-    { title: 'Shawbrook launches new digital onboarding platform', source: 'Finextra', category: 'general' as HeadlineCategory, impact: 'low' as HeadlineImpact, date: new Date('2025-04-20'), originatorId: org3Id },
-    { title: 'Asset finance new business volumes up 8% YoY', source: 'FLA', category: 'market' as HeadlineCategory, impact: 'medium' as HeadlineImpact, date: new Date('2025-04-10') },
-    { title: 'Aldermore achieves BBB+ credit rating upgrade', source: 'Moody\'s', category: 'earnings' as HeadlineCategory, impact: 'high' as HeadlineImpact, date: new Date('2025-03-25'), originatorId: org1Id },
+    { title: 'Aldermore reports 12% AuM growth in Q2 2026', source: 'Financial Times', category: 'earnings' as HeadlineCategory, impact: 'high' as HeadlineImpact, date: new Date('2026-02-14'), originatorId: org1Id },
+    { title: 'FCA tightens asset finance lending standards for 2026', source: 'Reuters', category: 'regulatory' as HeadlineCategory, impact: 'high' as HeadlineImpact, date: new Date('2026-02-10') },
+    { title: 'UK SME lending outlook upgraded by Bank of England', source: 'Bloomberg', category: 'market' as HeadlineCategory, impact: 'medium' as HeadlineImpact, date: new Date('2026-02-05') },
+    { title: 'Close Brothers Leasing arrears tick up in Q4 2025', source: 'S&P Global', category: 'risk' as HeadlineCategory, impact: 'high' as HeadlineImpact, date: new Date('2026-01-28'), originatorId: org2Id },
+    { title: 'British Business Bank expands Enable Funding programme', source: 'GOV.UK', category: 'general' as HeadlineCategory, impact: 'medium' as HeadlineImpact, date: new Date('2026-01-20') },
+    { title: 'Shawbrook launches new digital onboarding platform', source: 'Finextra', category: 'general' as HeadlineCategory, impact: 'low' as HeadlineImpact, date: new Date('2026-01-12'), originatorId: org3Id },
+    { title: 'Asset finance new business volumes up 8% YoY', source: 'FLA', category: 'market' as HeadlineCategory, impact: 'medium' as HeadlineImpact, date: new Date('2025-12-18') },
+    { title: 'Aldermore achieves BBB+ credit rating upgrade', source: 'Moody\'s', category: 'earnings' as HeadlineCategory, impact: 'high' as HeadlineImpact, date: new Date('2025-12-05'), originatorId: org1Id },
   ];
 
   const headlines = headlineDefs.map((h) => ({

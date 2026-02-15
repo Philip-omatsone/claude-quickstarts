@@ -4,8 +4,9 @@ import { v4 as uuid } from 'uuid';
 import { FileText, Check, AlertCircle, Loader2, Info, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { db } from '../../db/database';
 import { extractTextFromPdf, extractMetricsFromText } from '../../utils/pdf-extractor';
-import { extractMetricsWithAi, analyseDocument, hasApiKey } from '../../utils/claude-api';
+import { extractMetricsWithAi, analyseDocument } from '../../utils/claude-api';
 import type { AiExtractedMetric } from '../../utils/claude-api';
+import { useApiKey } from '../../hooks/useApiKey';
 import type { MetricType, MetricUnit } from '../../types';
 
 const UNIT_MAP: Record<string, MetricUnit> = {
@@ -70,7 +71,7 @@ export default function PdfUploader() {
   const [showText, setShowText] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const apiKeyAvailable = hasApiKey();
+  const { hasKey: apiKeyAvailable } = useApiKey();
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

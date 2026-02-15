@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ClaudeAssistant from '../ClaudeAssistant';
+import ApiKeyBanner from '../ApiKeyBanner';
 
 export default function AppLayout() {
   const [showAssistant, setShowAssistant] = useState(false);
@@ -10,8 +11,9 @@ export default function AppLayout() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 overflow-auto relative">
-        <div className="p-6 max-w-[1400px] mx-auto">
+      <main className="flex-1 overflow-auto relative flex flex-col">
+        <ApiKeyBanner />
+        <div className="p-6 max-w-[1400px] mx-auto flex-1 w-full">
           <Outlet />
         </div>
         <button

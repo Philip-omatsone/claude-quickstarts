@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuid } from 'uuid';
 import {
@@ -6,9 +6,9 @@ import {
   Shield, AlertTriangle, CheckCircle, RefreshCw, FileText, Clock,
 } from 'lucide-react';
 import { db } from '../db/database';
-import { analyseCompany, hasApiKey } from '../utils/claude-api';
+import { analyseCompany } from '../utils/claude-api';
 import { formatValue } from '../utils/format';
-import type { OriginatorAnalysis } from '../types';
+import { useApiKey } from '../hooks/useApiKey';
 
 export default function CompanyOverviewPage() {
   const originators = useLiveQuery(() => db.originators.toArray(), []);
@@ -21,21 +21,37 @@ export default function CompanyOverviewPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const apiKeyAvailable = hasApiKey();
+  const { hasKey } = useApiKey();
 
   // Get the latest analysis for selected originator
   const latestAnalysis = analyses?.find((a) => a.originatorId === selectedOrgId);
   const orgDocuments = documents?.filter((d) => d.originatorId === selectedOrgId) ?? [];
   const selectedOrg = originators?.find((o) => o.id === selectedOrgId);
 
+  // Auto-select first originator when data loads
+  useEffect(() => {
+    if (!selectedOrgId && originators && originators.length > 0) {
+      setSelectedOrgId(originators[0].id);
+    }
+  }, [originators, selectedOrgId]);
+
+  // Auto-generate analysis when originator is selected and no analysis exists
+  useEffect(() => {
+    if (selectedOrgId && hasKey && !latestAnalysis && !loading && metrics && metrics.length > 0 && covenants) {
+      generateAnalysis();
+    }
+    // Only trigger on originator change or key availability
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrgId, hasKey, latestAnalysis, metrics, covenants]);
+
   async function generateAnalysis() {
-    if (!selectedOrgId || !metrics || !covenants) return;
+    if (!selectedOrgId || !metrics || !covenants || !hasKey) return;
 
     setLoading(true);
     setError('');
 
     try {
-      const orgName = selectedOrg?.name ?? 'Unknown';
+      const orgName = selectedOrg?.name ?? originators?.find((o) => o.id === selectedOrgId)?.name ?? 'Unknown';
       const orgMetrics = metrics.filter((m) => m.originatorId === selectedOrgId);
       const orgCovenants = covenants.filter((c) => c.originatorId === selectedOrgId);
 
@@ -105,15 +121,17 @@ export default function CompanyOverviewPage() {
         <div className="flex items-center gap-3">
           <select
             value={selectedOrgId}
-            onChange={(e) => setSelectedOrgId(e.target.value)}
+            onChange={(e) => {
+              setSelectedOrgId(e.target.value);
+              setError('');
+            }}
             className="border border-border rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent/30 min-w-[200px]"
           >
-            <option value="">Select originator...</option>
             {originators?.map((o) => (
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}
           </select>
-          {selectedOrgId && apiKeyAvailable && (
+          {selectedOrgId && hasKey && (
             <button
               onClick={generateAnalysis}
               disabled={loading}
@@ -121,12 +139,10 @@ export default function CompanyOverviewPage() {
             >
               {loading ? (
                 <Loader2 size={14} className="animate-spin" />
-              ) : latestAnalysis ? (
-                <RefreshCw size={14} />
               ) : (
-                <Sparkles size={14} />
+                <RefreshCw size={14} />
               )}
-              {loading ? 'Analysing...' : latestAnalysis ? 'Refresh Analysis' : 'Generate Analysis'}
+              {loading ? 'Analysing...' : 'Refresh'}
             </button>
           )}
         </div>
@@ -139,35 +155,23 @@ export default function CompanyOverviewPage() {
         </div>
       )}
 
-      {/* No originator selected */}
-      {!selectedOrgId && (
-        <div className="text-center py-16 text-text-secondary">
-          <Sparkles size={48} className="mx-auto mb-4 text-accent/30" />
-          <p className="text-sm">Select an originator to view AI-powered analysis</p>
-          {!apiKeyAvailable && (
-            <p className="text-xs mt-2">Set your API key in the Claude Assistant panel to enable analysis</p>
-          )}
-        </div>
-      )}
-
-      {/* No analysis yet */}
-      {selectedOrgId && !latestAnalysis && !loading && (
-        <div className="text-center py-12 text-text-secondary border-2 border-dashed border-border rounded-lg">
-          <Sparkles size={36} className="mx-auto mb-3 text-accent/40" />
-          <p className="text-sm font-medium mb-1">No analysis generated yet</p>
-          <p className="text-xs">
-            {apiKeyAvailable
-              ? 'Click "Generate Analysis" to have Claude analyse this originator\'s data'
-              : 'Set your Anthropic API key in the Claude Assistant panel first'}
+      {/* No API key */}
+      {!hasKey && (
+        <div className="text-center py-12 border-2 border-dashed border-amber-300 rounded-lg bg-amber-50/50">
+          <Sparkles size={36} className="mx-auto mb-3 text-amber-400" />
+          <p className="text-sm font-medium text-amber-800 mb-1">API Key Required</p>
+          <p className="text-xs text-amber-600">
+            Set your Anthropic API key using the banner at the top of the page to enable AI analysis.
           </p>
         </div>
       )}
 
       {/* Loading state */}
       {loading && (
-        <div className="flex items-center justify-center gap-3 py-12 text-accent">
-          <Loader2 size={20} className="animate-spin" />
+        <div className="flex flex-col items-center justify-center gap-3 py-16 text-accent">
+          <Loader2 size={28} className="animate-spin" />
           <span className="text-sm">Claude is analysing {selectedOrg?.name}...</span>
+          <span className="text-xs text-text-secondary">This takes a few seconds</span>
         </div>
       )}
 
@@ -208,9 +212,8 @@ export default function CompanyOverviewPage() {
             </div>
           )}
 
-          {/* Strengths, Risks, Credit side by side */}
+          {/* Strengths, Risks side by side */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Strengths */}
             <div className="border border-border rounded-lg overflow-hidden">
               <div className="px-4 py-2.5 bg-green-50 border-b border-border flex items-center gap-2">
                 <CheckCircle size={14} className="text-green-600" />
@@ -226,7 +229,6 @@ export default function CompanyOverviewPage() {
               </ul>
             </div>
 
-            {/* Risks */}
             <div className="border border-border rounded-lg overflow-hidden">
               <div className="px-4 py-2.5 bg-red-50 border-b border-border flex items-center gap-2">
                 <AlertTriangle size={14} className="text-red-600" />
