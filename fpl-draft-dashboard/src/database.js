@@ -120,6 +120,7 @@ function initSchema() {
 
     CREATE TABLE IF NOT EXISTS managers (
       id INTEGER PRIMARY KEY,
+      entry_id INTEGER,
       name TEXT,
       player_name TEXT,
       points_total INTEGER DEFAULT 0,
@@ -129,6 +130,16 @@ function initSchema() {
       points_for INTEGER DEFAULT 0,
       points_against INTEGER DEFAULT 0
     );
+  `);
+
+  // Migration: add entry_id column if missing (existing databases)
+  try {
+    d.exec('ALTER TABLE managers ADD COLUMN entry_id INTEGER');
+  } catch (_) {
+    // Column already exists, ignore
+  }
+
+  d.exec(`
 
     CREATE TABLE IF NOT EXISTS gameweek_scores (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,10 +229,10 @@ function setMeta(key, value) {
 
 function upsertManager(m) {
   getDb().prepare(`
-    INSERT INTO managers (id, name, player_name, points_total, wins, draws, losses, points_for, points_against)
-    VALUES (@id, @name, @player_name, @points_total, @wins, @draws, @losses, @points_for, @points_against)
+    INSERT INTO managers (id, entry_id, name, player_name, points_total, wins, draws, losses, points_for, points_against)
+    VALUES (@id, @entry_id, @name, @player_name, @points_total, @wins, @draws, @losses, @points_for, @points_against)
     ON CONFLICT(id) DO UPDATE SET
-      name=@name, player_name=@player_name, points_total=@points_total,
+      entry_id=@entry_id, name=@name, player_name=@player_name, points_total=@points_total,
       wins=@wins, draws=@draws, losses=@losses,
       points_for=@points_for, points_against=@points_against
   `).run(m);

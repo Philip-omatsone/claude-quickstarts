@@ -16,6 +16,7 @@ function getSyncStatus() {
     lastSync: db.getMeta('last_sync_time'),
     lastSyncedEvent: db.getLastSyncedEvent(),
     leagueId: db.getMeta('league_id'),
+    leagueName: db.getMeta('league_name'),
     log: syncLog.slice(-50),
     error: syncError,
   };
@@ -105,12 +106,18 @@ async function syncAll(leagueId) {
       }
     }
 
+    // Store league name if available
+    if (league.league && league.league.name) {
+      db.setMeta('league_name', league.league.name);
+    }
+
     // Sync managers from standings
     const standings = league.standings || [];
     log(`Syncing ${standings.length} managers...`);
     for (const s of standings) {
       db.upsertManager({
         id: s.league_entry,
+        entry_id: s.entry_id || s.league_entry,
         name: s.entry_name || '',
         player_name: s.player_name || '',
         points_total: s.total || 0,
@@ -150,9 +157,10 @@ async function syncAll(leagueId) {
     // 4. Fetch each manager's history
     const managers = db.getAllManagers();
     for (const mgr of managers) {
-      log(`Fetching history for ${mgr.player_name} (${mgr.id})...`);
+      const entryId = mgr.entry_id || mgr.id;
+      log(`Fetching history for ${mgr.player_name} (entry ${entryId})...`);
       try {
-        const history = await api.getEntryHistory(mgr.id);
+        const history = await api.getEntryHistory(entryId);
         const historyEntries = history.history || [];
         for (const h of historyEntries) {
           db.upsertGameweekScore({
@@ -164,7 +172,7 @@ async function syncAll(leagueId) {
           });
         }
       } catch (err) {
-        log(`Warning: Could not fetch history for manager ${mgr.id}: ${err.message}`);
+        log(`Warning: Could not fetch history for ${mgr.player_name} (entry ${entryId}): ${err.message}`);
       }
     }
     log('Gameweek histories synced.');
@@ -174,9 +182,10 @@ async function syncAll(leagueId) {
     if (startEvent <= currentEvent) {
       log(`Fetching team picks for GW ${startEvent} to ${currentEvent}...`);
       for (const mgr of managers) {
+        const entryId = mgr.entry_id || mgr.id;
         for (let gw = startEvent; gw <= currentEvent; gw++) {
           try {
-            const picks = await api.getEntryEvent(mgr.id, gw);
+            const picks = await api.getEntryEvent(entryId, gw);
             const picksList = picks.picks || [];
             for (const p of picksList) {
               db.upsertTeamPick({
@@ -189,7 +198,7 @@ async function syncAll(leagueId) {
               });
             }
           } catch (err) {
-            log(`Warning: Could not fetch picks for manager ${mgr.id} GW${gw}: ${err.message}`);
+            log(`Warning: Could not fetch picks for ${mgr.player_name} (entry ${entryId}) GW${gw}: ${err.message}`);
           }
         }
       }
@@ -226,10 +235,20 @@ async function syncAll(leagueId) {
       const txData = await api.getTransactions(leagueId);
       const txList = txData.transactions || txData || [];
       if (Array.isArray(txList) && txList.length > 0) {
+        // Build entry_id -> league_entry (manager id) mapping
+        // Transactions API returns entry_id in the "entry" field
+        const entryToMgr = {};
+        for (const mgr of managers) {
+          const eid = mgr.entry_id || mgr.id;
+          entryToMgr[eid] = mgr.id;
+        }
+
         db.clearTransactions();
         for (const t of txList) {
+          // t.entry may be entry_id or league_entry depending on API version
+          const managerId = entryToMgr[t.entry] || t.entry;
           db.insertTransaction({
-            manager_id: t.entry,
+            manager_id: managerId,
             event: t.event || 0,
             player_in_id: t.element_in,
             player_out_id: t.element_out,

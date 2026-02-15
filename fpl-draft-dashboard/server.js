@@ -16,7 +16,8 @@ app.get('/api/league', (req, res) => {
   try {
     const managers = db.getAllManagers();
     const leagueId = db.getMeta('league_id');
-    res.json({ leagueId, managers });
+    const leagueName = db.getMeta('league_name');
+    res.json({ leagueId, leagueName, managers });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

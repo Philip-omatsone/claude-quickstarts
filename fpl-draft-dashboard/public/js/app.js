@@ -144,6 +144,8 @@ async function loadDashboard() {
     document.getElementById('league-info').textContent = 'League #' + status.leagueId;
   }
 
+  // Update league name after data loads (will be set below after league data fetches)
+
   // Load all data in parallel
   const [leagueData, h2hData, gameweeks, teamRatings, playersData, draftData, txData] =
     await Promise.all([
@@ -159,6 +161,11 @@ async function loadDashboard() {
   managers = leagueData ? leagueData.managers || [] : [];
   allPlayers = playersData || [];
   allTransactions = txData || [];
+
+  // Show league name in header if available
+  if (leagueData && leagueData.leagueName) {
+    document.getElementById('league-info').textContent = leagueData.leagueName;
+  }
 
   renderLeague(leagueData, gameweeks);
   renderH2H(h2hData);
@@ -215,7 +222,7 @@ function renderLeague(data, gameweeks) {
   }
 
   // Most consistent (lowest std dev)
-  let mostConsistent = { name: '-', stdDev: Infinity };
+  let mostConsistent = { name: '-', team: '', stdDev: Infinity };
   for (const [mId, scores] of Object.entries(byMgr)) {
     if (scores.length < 2) continue;
     const pts = scores.map((s) => s.points);
@@ -223,7 +230,7 @@ function renderLeague(data, gameweeks) {
     const variance = pts.reduce((a, p) => a + (p - mean) ** 2, 0) / pts.length;
     const stdDev = Math.sqrt(variance);
     if (stdDev < mostConsistent.stdDev) {
-      mostConsistent = { name: mgrMap[mId]?.player_name || mId, stdDev: Math.round(stdDev * 10) / 10 };
+      mostConsistent = { name: mgrMap[mId]?.player_name || mId, team: mgrMap[mId]?.name || '', stdDev: Math.round(stdDev * 10) / 10 };
     }
   }
 
@@ -236,17 +243,17 @@ function renderLeague(data, gameweeks) {
     <div class="stat-card">
       <div class="stat-label">Highest GW Score</div>
       <div class="stat-value">${highestGw.points || '-'}</div>
-      <div class="stat-sub">${mgrMap[highestGw.manager_id]?.player_name || ''} — GW${highestGw.event || ''}</div>
+      <div class="stat-sub">${escapeHtml(mgrMap[highestGw.manager_id]?.name || '')} (${escapeHtml(mgrMap[highestGw.manager_id]?.player_name || '')}) — GW${highestGw.event || ''}</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Most Consistent</div>
       <div class="stat-value">${escapeHtml(mostConsistent.name)}</div>
-      <div class="stat-sub">Std Dev: ${mostConsistent.stdDev}</div>
+      <div class="stat-sub">${escapeHtml(mostConsistent.team)} | Std Dev: ${mostConsistent.stdDev}</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Top Points Scorer</div>
       <div class="stat-value">${topScorer?.points_for || '-'}</div>
-      <div class="stat-sub">${escapeHtml(topScorer?.player_name || '')}</div>
+      <div class="stat-sub">${escapeHtml(topScorer?.name || '')} (${escapeHtml(topScorer?.player_name || '')})</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Managers</div>
@@ -266,12 +273,12 @@ function renderH2H(data) {
 
   let html = '<thead><tr><th></th>';
   for (const m of mgrs) {
-    html += `<th>${escapeHtml(m.player_name)}</th>`;
+    html += `<th title="${escapeHtml(m.player_name)}">${escapeHtml(m.name)}</th>`;
   }
   html += '</tr></thead><tbody>';
 
   for (const m1 of mgrs) {
-    html += `<tr><td><strong>${escapeHtml(m1.player_name)}</strong></td>`;
+    html += `<tr><td title="${escapeHtml(m1.player_name)}"><strong>${escapeHtml(m1.name)}</strong></td>`;
     for (const m2 of mgrs) {
       if (m1.id === m2.id) {
         html += '<td class="h2h-self">-</td>';
@@ -297,8 +304,8 @@ async function showH2hDetail(id1, id2) {
   const mgrMap = {};
   for (const m of managers) mgrMap[m.id] = m;
 
-  const name1 = mgrMap[id1]?.player_name || id1;
-  const name2 = mgrMap[id2]?.player_name || id2;
+  const name1 = mgrMap[id1]?.name || mgrMap[id1]?.player_name || id1;
+  const name2 = mgrMap[id2]?.name || mgrMap[id2]?.player_name || id2;
 
   document.getElementById('h2h-detail').classList.remove('hidden');
   document.getElementById('h2h-detail-title').textContent = `${name1} vs ${name2}`;
@@ -603,7 +610,7 @@ function renderDraft(picks) {
       <tr>
         <td>${dp.round}</td>
         <td>${dp.pick}</td>
-        <td>${dp.manager ? escapeHtml(dp.manager.player_name) : '-'}</td>
+        <td>${dp.manager ? `${escapeHtml(dp.manager.name)} <span style="color:var(--text-muted);font-size:0.85em">(${escapeHtml(dp.manager.player_name)})</span>` : '-'}</td>
         <td>${dp.player ? escapeHtml(dp.player.web_name) : '-'}</td>
         <td>${dp.player ? `<span class="pos-badge ${POS_CLASSES[dp.player.position]}">${POS_LABELS[dp.player.position]}</span>` : '-'}</td>
         <td>${dp.player ? dp.player.total_points : '-'}</td>
@@ -626,7 +633,7 @@ function renderTransactions(txs, mgrs) {
   for (const m of mgrs) {
     const opt = document.createElement('option');
     opt.value = m.id;
-    opt.textContent = m.player_name;
+    opt.textContent = `${m.name} (${m.player_name})`;
     select.appendChild(opt);
   }
 
@@ -658,7 +665,7 @@ function filterTransactions() {
 
       return `<tr>
         <td>GW${t.event || '-'}</td>
-        <td>${t.manager ? escapeHtml(t.manager.player_name) : '-'}</td>
+        <td>${t.manager ? `${escapeHtml(t.manager.name)} <span style="color:var(--text-muted);font-size:0.85em">(${escapeHtml(t.manager.player_name)})</span>` : '-'}</td>
         <td style="color:var(--accent)">${t.player_in ? escapeHtml(t.player_in.web_name) : '-'}</td>
         <td style="color:var(--accent-secondary)">${t.player_out ? escapeHtml(t.player_out.web_name) : '-'}</td>
         <td>${typeBadge}</td>
