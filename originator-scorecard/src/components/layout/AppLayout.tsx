@@ -24,6 +24,10 @@ export default function AppLayout() {
           <MessageCircle size={20} />
         </button>
         {showAssistant && <ClaudeAssistant onClose={() => setShowAssistant(false)} />}
+        <footer className="border-t border-border/40 bg-muted/30 px-4 py-2 text-xs text-muted-foreground flex items-center justify-between">
+          <span>Originator Scorecard v{__APP_VERSION__}</span>
+          <span>Built: {new Date(__BUILD_TIME__).toLocaleString()}</span>
+        </footer>
       </main>
     </div>
   );
