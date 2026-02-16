@@ -30,7 +30,11 @@ export function PostcodeSearch({
   const [fetchingAddresses, setFetchingAddresses] = useState(false);
   const [manualEntry, setManualEntry] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const addressButtonRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
+
+  // For buyer variant, require both valid postcode and address selection
+  const canGenerate = postcodeValid && (variant !== "buyer" || address.trim().length > 0);
 
   // Restore state from sessionStorage on mount (back button support)
   useEffect(() => {
@@ -198,7 +202,19 @@ export function PostcodeSearch({
             }}
             placeholder={placeholder}
             className="w-full pl-10 pr-16 py-3 rounded-xl border border-border bg-white text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                if (canGenerate) {
+                  handleSearch();
+                } else {
+                  e.preventDefault();
+                  if (postcodeValid && variant === "buyer" && !address.trim()) {
+                    setShowDropdown(true);
+                    addressButtonRef.current?.focus();
+                  }
+                }
+              }
+            }}
           />
           {postcodeValid && (
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-primary text-xs font-medium">
@@ -221,13 +237,21 @@ export function PostcodeSearch({
                     onChange={(e) => setAddress(e.target.value)}
                     placeholder="e.g. 10 Downing Street"
                     className="w-full pl-10 pr-4 py-3 rounded-xl border border-border bg-white text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        if (address.trim()) {
+                          handleSearch();
+                        } else {
+                          e.preventDefault();
+                        }
+                      }
+                    }}
                     autoFocus={manualEntry}
                   />
                 </div>
                 {!manualEntry && !fetchingAddresses && addresses.length === 0 && (
                   <p className="text-xs text-muted mt-1.5">
-                    Enter the property address above, or just click &quot;Get Free Report&quot; to search by postcode only.
+                    Enter the property address above to generate your report.
                   </p>
                 )}
               </div>
@@ -236,6 +260,7 @@ export function PostcodeSearch({
               <div className="relative" ref={dropdownRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted z-10" />
                 <button
+                  ref={addressButtonRef}
                   type="button"
                   onClick={() => setShowDropdown(!showDropdown)}
                   className="w-full pl-10 pr-10 py-3 rounded-xl border border-border bg-white text-left focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
@@ -313,9 +338,15 @@ export function PostcodeSearch({
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
 
+        {variant === "buyer" && postcodeValid && !address.trim() && (
+          <p className="text-xs text-amber-600 text-center">
+            Please select an address above to generate your report
+          </p>
+        )}
+
         <button
           onClick={handleSearch}
-          disabled={loading}
+          disabled={loading || !canGenerate}
           className="w-full bg-primary text-white py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
         >
           {loading ? (

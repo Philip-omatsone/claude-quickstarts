@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-01-28.clover",
-});
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2026-01-28.clover",
+    })
+  : null;
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 
 export async function POST(request: NextRequest) {
+  if (!stripe) {
+    return NextResponse.json({ error: "Payments not configured" }, { status: 503 });
+  }
+
   try {
     const body = await request.text();
     const sig = request.headers.get("stripe-signature") || "";
@@ -30,7 +36,6 @@ export async function POST(request: NextRequest) {
         const { postcode, address } = session.metadata || {};
 
         if (postcode) {
-          // In production: trigger report generation and store in DB
           console.log(
             `Payment completed for report: ${postcode} / ${address}`
           );

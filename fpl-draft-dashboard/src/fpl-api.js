@@ -5,7 +5,20 @@ const BASE_URL = 'https://draft.premierleague.com/api';
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let lastRequestTime = 0;
-const MIN_INTERVAL = 1000; // 1 second between requests
+const MIN_INTERVAL = 1200; // 1.2 seconds between requests to avoid rate limiting
+
+const BROWSER_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'en-GB,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  Referer: 'https://draft.premierleague.com/',
+  Origin: 'https://draft.premierleague.com',
+  Connection: 'keep-alive',
+};
+
+const MAX_RETRIES = 3;
 
 async function rateLimitedFetch(url) {
   const now = Date.now();
@@ -15,17 +28,38 @@ async function rateLimitedFetch(url) {
   }
   lastRequestTime = Date.now();
 
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'FPL-Draft-Dashboard/1.0',
-    },
-  });
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, { headers: BROWSER_HEADERS });
 
-  if (!res.ok) {
-    throw new Error(`FPL API error: ${res.status} ${res.statusText} for ${url}`);
+      if (res.status === 429) {
+        // Rate limited — back off and retry
+        const backoff = attempt * 3000;
+        console.log(`Rate limited on ${url}, retrying in ${backoff}ms (attempt ${attempt}/${MAX_RETRIES})`);
+        await delay(backoff);
+        lastRequestTime = Date.now();
+        continue;
+      }
+
+      if (!res.ok) {
+        throw new Error(`FPL API error: ${res.status} ${res.statusText} for ${url}`);
+      }
+
+      return res.json();
+    } catch (err) {
+      lastError = err;
+      if (attempt < MAX_RETRIES && (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT' || err.type === 'system')) {
+        const backoff = attempt * 2000;
+        console.log(`Network error on ${url}, retrying in ${backoff}ms (attempt ${attempt}/${MAX_RETRIES}): ${err.message}`);
+        await delay(backoff);
+        lastRequestTime = Date.now();
+        continue;
+      }
+      throw err;
+    }
   }
-
-  return res.json();
+  throw lastError;
 }
 
 // Get all player data and game settings
@@ -68,6 +102,11 @@ async function getEventLive(event) {
   return rateLimitedFetch(`${BASE_URL}/event/${event}/live`);
 }
 
+// Get entry (team) details to find league ID
+async function getEntryDetails(entryId) {
+  return rateLimitedFetch(`${BASE_URL}/entry/${entryId}/public`);
+}
+
 module.exports = {
   getBootstrapStatic,
   getGame,
@@ -77,4 +116,5 @@ module.exports = {
   getDraftChoices,
   getTransactions,
   getEventLive,
+  getEntryDetails,
 };

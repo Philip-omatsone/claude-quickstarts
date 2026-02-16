@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FPL Draft Dashboard</title>
+  <title>OutDrafted — FPL Draft Analytics</title>
   <link rel="stylesheet" href="/css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -11,11 +11,11 @@
   <!-- Setup Modal -->
   <div id="setup-modal" class="modal hidden">
     <div class="modal-content">
-      <h2>FPL Draft Dashboard</h2>
-      <p>Enter your FPL Draft league ID to get started.</p>
-      <p class="hint">You can find it in the URL when viewing your league on draft.premierleague.com</p>
+      <h2>Out<span style="color:var(--accent)">Drafted</span></h2>
+      <p>Enter your FPL Draft league ID or entry ID to get started.</p>
+      <p class="hint">Your entry ID is in the URL on the Points page: draft.premierleague.com/entry/<strong>XXXXX</strong>/event/...</p>
       <div class="input-group">
-        <input type="text" id="league-id-input" placeholder="e.g. 12345" autocomplete="off">
+        <input type="text" id="league-id-input" placeholder="League ID or Entry ID" autocomplete="off">
         <button id="sync-btn" onclick="startSync()">Sync League</button>
       </div>
       <div id="setup-status" class="status-msg hidden"></div>
@@ -35,7 +35,7 @@
   <div id="dashboard" class="hidden">
     <header>
       <div class="header-left">
-        <h1>FPL Draft Dashboard</h1>
+        <h1>Out<span class="brand-accent">Drafted</span></h1>
         <span id="league-info" class="league-info"></span>
       </div>
       <div class="header-right">
@@ -52,6 +52,7 @@
       <button class="tab" data-tab="players">Players</button>
       <button class="tab" data-tab="draft">Draft</button>
       <button class="tab" data-tab="transactions">Transactions</button>
+      <button class="tab" data-tab="whatif">What-If</button>
     </nav>
 
     <main class="content">
@@ -79,19 +80,30 @@
             </table>
           </div>
         </div>
+        <div class="card">
+          <h3>Power Rankings</h3>
+          <p class="hint" style="margin-bottom:0.75rem">Based on last 5 gameweeks: H2H results and points scored</p>
+          <div id="power-rankings-list"></div>
+        </div>
       </section>
 
       <!-- H2H Tab -->
       <section id="tab-h2h" class="tab-content">
+        <div id="h2h-predictions-section" class="card hidden">
+          <h3>Matchup Predictions</h3>
+          <p class="hint" style="margin-bottom:0.75rem">Next gameweek win probabilities based on form, H2H record, and squad strength</p>
+          <div id="h2h-predictions"></div>
+        </div>
         <div class="card">
           <h3>Head-to-Head Matrix</h3>
-          <p class="hint">Click a cell to see detailed H2H history</p>
+          <p class="hint">Click a cell to see rivalry breakdown</p>
           <div class="table-wrap">
             <table id="h2h-matrix" class="h2h-table"></table>
           </div>
         </div>
         <div id="h2h-detail" class="card hidden">
           <h3 id="h2h-detail-title"></h3>
+          <div id="rivalry-stats-section"></div>
           <div class="table-wrap">
             <table id="h2h-detail-table">
               <thead>
@@ -112,13 +124,14 @@
       <!-- Teams Tab -->
       <section id="tab-teams" class="tab-content">
         <div class="card">
-          <h3>Team Ratings</h3>
+          <h3>Manager Points Scored</h3>
           <div class="chart-container">
             <canvas id="team-ratings-chart"></canvas>
           </div>
         </div>
         <div class="card">
-          <h3>Position Strength</h3>
+          <h3>Current Squad Position Strength</h3>
+          <p class="hint" style="margin-bottom:0.75rem">Based on current squad players' season total points</p>
           <div class="chart-container">
             <canvas id="position-chart"></canvas>
           </div>
@@ -198,6 +211,11 @@
 
       <!-- Draft Tab -->
       <section id="tab-draft" class="tab-content">
+        <div id="draft-analysis-section" class="card hidden">
+          <h3>Draft Regret Index</h3>
+          <p class="hint" style="margin-bottom:0.75rem">Value = actual points vs expected points for that draft round</p>
+          <div id="draft-analysis"></div>
+        </div>
         <div class="card">
           <h3>Draft Board</h3>
           <div class="table-wrap">
@@ -210,6 +228,8 @@
                   <th>Player</th>
                   <th>Pos</th>
                   <th>Season Pts</th>
+                  <th>PPG</th>
+                  <th>Value</th>
                   <th>Auto</th>
                 </tr>
               </thead>
@@ -221,6 +241,11 @@
 
       <!-- Transactions Tab -->
       <section id="tab-transactions" class="tab-content">
+        <div id="activity-heatmap-section" class="card hidden">
+          <h3>Activity Heatmap</h3>
+          <p class="hint" style="margin-bottom:0.75rem">Accepted transactions per manager per gameweek</p>
+          <div id="activity-heatmap" class="heatmap-grid"></div>
+        </div>
         <div class="card">
           <h3>Transactions</h3>
           <div class="filter-bar">
@@ -254,6 +279,20 @@
               <tbody></tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      <!-- What-If Tab -->
+      <section id="tab-whatif" class="tab-content">
+        <div class="card">
+          <h3>What-If Transfer Analyzer</h3>
+          <p class="hint" style="margin-bottom:0.75rem">See how your transfers worked out — points scored by dropped vs picked-up players since the transfer</p>
+          <div class="filter-bar">
+            <select id="whatif-manager-filter" onchange="loadWhatIf()">
+              <option value="">Select a manager...</option>
+            </select>
+          </div>
+          <div id="whatif-content"></div>
         </div>
       </section>
     </main>

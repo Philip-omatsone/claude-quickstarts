@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-01-28.clover",
-});
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2026-01-28.clover",
+    })
+  : null;
 
 export async function POST(request: NextRequest) {
   try {
+    if (!stripe) {
+      return NextResponse.json(
+        { error: "Payments not configured" },
+        { status: 503 }
+      );
+    }
+
     const body = await request.json();
     const { postcode, address } = body;
 
@@ -29,7 +38,7 @@ export async function POST(request: NextRequest) {
               name: "Viven Buyer Report",
               description: `Comprehensive property report for ${address || postcode}`,
             },
-            unit_amount: 999, // £9.99 in pence
+            unit_amount: 999,
           },
           quantity: 1,
         },

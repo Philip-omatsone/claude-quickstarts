@@ -174,6 +174,11 @@ export interface UserPreferences {
   workLocationName?: string;
   transportMode?: "transit" | "driving" | "cycling";
   additionalDestinations?: string[];
+  // Pre-report questionnaire fields
+  commuteDestination?: string;
+  commuteModes?: ("public_transport" | "cycling" | "driving" | "walking")[];
+  hasChildren?: "yes" | "no" | "planning";
+  priorities?: string[];
 }
 
 // Broadband data

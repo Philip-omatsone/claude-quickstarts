@@ -1,20 +1,111 @@
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
 
 const DB_PATH = path.join(__dirname, '..', 'data', 'fpl-draft.db');
 
-let db;
+let db = null;
+let saveTimer = null;
+
+// --- Persistence helpers ---
+
+function persistToFile() {
+  if (db) {
+    const data = db.export();
+    fs.writeFileSync(DB_PATH, Buffer.from(data));
+  }
+}
+
+function scheduleSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistToFile();
+  }, 1000);
+}
+
+function flushDb() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  persistToFile();
+}
+
+// --- sql.js compatibility wrapper ---
+
+function createStatement(sql) {
+  return {
+    run(params) {
+      if (params && typeof params === 'object' && !Array.isArray(params)) {
+        const mapped = {};
+        for (const [k, v] of Object.entries(params)) {
+          mapped['@' + k] = v === null || v === undefined ? null : v;
+        }
+        db.run(sql, mapped);
+      } else {
+        db.run(sql);
+      }
+      scheduleSave();
+    },
+    get(...args) {
+      const stmt = db.prepare(sql);
+      try {
+        if (args.length > 0) {
+          stmt.bind(args);
+        }
+        if (stmt.step()) {
+          return stmt.getAsObject();
+        }
+        return undefined;
+      } finally {
+        stmt.free();
+      }
+    },
+    all(...args) {
+      const stmt = db.prepare(sql);
+      try {
+        if (args.length > 0) {
+          stmt.bind(args);
+        }
+        const results = [];
+        while (stmt.step()) {
+          results.push(stmt.getAsObject());
+        }
+        return results;
+      } finally {
+        stmt.free();
+      }
+    },
+  };
+}
+
+// --- Initialization ---
+
+async function initDb() {
+  if (db) return;
+  const SQL = await initSqlJs();
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  if (fs.existsSync(DB_PATH)) {
+    const buffer = fs.readFileSync(DB_PATH);
+    db = new SQL.Database(buffer);
+  } else {
+    db = new SQL.Database();
+  }
+  db.run('PRAGMA foreign_keys = ON');
+  initSchema();
+
+  process.on('exit', flushDb);
+  process.on('SIGINT', () => { flushDb(); process.exit(); });
+  process.on('SIGTERM', () => { flushDb(); process.exit(); });
+}
 
 function getDb() {
-  if (!db) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-    initSchema();
-  }
-  return db;
+  if (!db) throw new Error('Database not initialized. Call initDb() first.');
+  return {
+    prepare: (sql) => createStatement(sql),
+    exec: (sql) => db.exec(sql),
+  };
 }
 
 function initSchema() {
@@ -28,6 +119,7 @@ function initSchema() {
 
     CREATE TABLE IF NOT EXISTS managers (
       id INTEGER PRIMARY KEY,
+      entry_id INTEGER,
       name TEXT,
       player_name TEXT,
       points_total INTEGER DEFAULT 0,
@@ -37,6 +129,16 @@ function initSchema() {
       points_for INTEGER DEFAULT 0,
       points_against INTEGER DEFAULT 0
     );
+  `);
+
+  // Migration: add entry_id column if missing (existing databases)
+  try {
+    d.exec('ALTER TABLE managers ADD COLUMN entry_id INTEGER');
+  } catch (_) {
+    // Column already exists, ignore
+  }
+
+  d.exec(`
 
     CREATE TABLE IF NOT EXISTS gameweek_scores (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,6 +210,14 @@ function initSchema() {
       result TEXT,
       added TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS player_gw_scores (
+      player_id INTEGER,
+      event INTEGER,
+      points INTEGER DEFAULT 0,
+      minutes INTEGER DEFAULT 0,
+      UNIQUE(player_id, event)
+    );
   `);
 }
 
@@ -119,17 +229,17 @@ function getMeta(key) {
 }
 
 function setMeta(key, value) {
-  getDb().prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)').run(key, String(value));
+  getDb().prepare('INSERT OR REPLACE INTO metadata (key, value) VALUES (@key, @value)').run({ key, value: String(value) });
 }
 
 // --- Upsert helpers ---
 
 function upsertManager(m) {
   getDb().prepare(`
-    INSERT INTO managers (id, name, player_name, points_total, wins, draws, losses, points_for, points_against)
-    VALUES (@id, @name, @player_name, @points_total, @wins, @draws, @losses, @points_for, @points_against)
+    INSERT INTO managers (id, entry_id, name, player_name, points_total, wins, draws, losses, points_for, points_against)
+    VALUES (@id, @entry_id, @name, @player_name, @points_total, @wins, @draws, @losses, @points_for, @points_against)
     ON CONFLICT(id) DO UPDATE SET
-      name=@name, player_name=@player_name, points_total=@points_total,
+      entry_id=@entry_id, name=@name, player_name=@player_name, points_total=@points_total,
       wins=@wins, draws=@draws, losses=@losses,
       points_for=@points_for, points_against=@points_against
   `).run(m);
@@ -204,6 +314,15 @@ function insertTransaction(t) {
   `).run(t);
 }
 
+function upsertPlayerGwScore(s) {
+  getDb().prepare(`
+    INSERT INTO player_gw_scores (player_id, event, points, minutes)
+    VALUES (@player_id, @event, @points, @minutes)
+    ON CONFLICT(player_id, event) DO UPDATE SET
+      points=@points, minutes=@minutes
+  `).run(s);
+}
+
 // --- Query helpers ---
 
 function getAllManagers() {
@@ -242,7 +361,6 @@ function getTeamPicks(managerId, event) {
 }
 
 function getLatestTeamPicks() {
-  // Get picks from the most recent gameweek for each manager
   return getDb().prepare(`
     SELECT tp.* FROM team_picks tp
     INNER JOIN (
@@ -276,7 +394,27 @@ function setLastSyncedEvent(event) {
   setMeta('last_synced_event', event);
 }
 
+function getPlayerGwScores(playerId) {
+  return getDb().prepare('SELECT * FROM player_gw_scores WHERE player_id = ? ORDER BY event').all(playerId);
+}
+
+function getPlayerPointsSinceEvent(playerId, event) {
+  const row = getDb().prepare('SELECT COALESCE(SUM(points), 0) as total FROM player_gw_scores WHERE player_id = ? AND event > ?').get(playerId, event);
+  return row ? row.total : 0;
+}
+
+function getAllPlayerGwScores() {
+  return getDb().prepare('SELECT * FROM player_gw_scores ORDER BY event, player_id').all();
+}
+
+function getPlayerGwScoreCount() {
+  const row = getDb().prepare('SELECT COUNT(*) as cnt FROM player_gw_scores').get();
+  return row ? row.cnt : 0;
+}
+
 module.exports = {
+  initDb,
+  flushDb,
   getDb,
   getMeta,
   setMeta,
@@ -290,6 +428,7 @@ module.exports = {
   insertDraftPick,
   clearTransactions,
   insertTransaction,
+  upsertPlayerGwScore,
   getAllManagers,
   getGameweekScores,
   getH2hMatches,
@@ -302,4 +441,8 @@ module.exports = {
   getManagerCount,
   getLastSyncedEvent,
   setLastSyncedEvent,
+  getPlayerGwScores,
+  getPlayerPointsSinceEvent,
+  getAllPlayerGwScores,
+  getPlayerGwScoreCount,
 };

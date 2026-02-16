@@ -398,11 +398,6 @@ export default function BuyerReportPage() {
   const insights = report.insights;
   const enrichedComps = priceHistory?.enrichedComparables;
   const schoolsData = report.schoolsData;
-  // Use fastest default commute (London Bridge, etc.) for the header stat
-  const fastestCommute = transport?.defaultCommutes?.[0];
-  const commuteMin = fastestCommute?.durationMinutes ?? transport?.commuteToCenter?.[0]?.durationMinutes;
-  const commuteLabel = fastestCommute?.destinationLabel;
-
   return (
     <div id="viven-report" className="page-transition max-w-4xl mx-auto px-4 pt-8 pb-16">
       {/* ──────── HEADER ──────── */}
@@ -523,23 +518,6 @@ export default function BuyerReportPage() {
           )}
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
-          <p className="text-xs text-muted">
-            {priceHistory?.hpiAdjustedPricePerSqFt ? "Per sq ft (adj.)" : "Per sq ft"}
-          </p>
-          <p className="text-lg font-heading font-bold mt-1">
-            {priceHistory?.hpiAdjustedPricePerSqFt
-              ? formatPrice(priceHistory.hpiAdjustedPricePerSqFt)
-              : priceHistory && priceHistory.pricePerSqFt > 0
-                ? formatPrice(priceHistory.pricePerSqFt)
-                : "N/A"}
-          </p>
-          {priceHistory?.hpiAdjustedPricePerSqFt && priceHistory.pricePerSqFt > 0 && lastSale && (
-            <p className="text-[10px] text-muted mt-0.5">
-              {formatPrice(priceHistory.pricePerSqFt)} in {new Date(safeStr(lastSale.dateOfTransfer)).getFullYear()}
-            </p>
-          )}
-        </div>
-        <div className="bg-white rounded-xl border border-border p-4 text-center">
           <p className="text-xs text-muted">EPC Rating</p>
           <p className="text-lg font-heading font-bold mt-1">
             {epc ? (
@@ -550,13 +528,38 @@ export default function BuyerReportPage() {
           </p>
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
-          <p className="text-xs text-muted">Commute</p>
+          <p className="text-xs text-muted">Flood Risk</p>
           <p className="text-lg font-heading font-bold mt-1">
-            {commuteMin ? `${commuteMin} min` : "N/A"}
+            {flood ? (
+              <span className={`text-sm font-semibold ${
+                flood.floodZone === "1" && flood.surfaceWater !== "high"
+                  ? "text-green-600"
+                  : flood.floodZone === "3" || flood.surfaceWater === "high"
+                    ? "text-red-600"
+                    : "text-amber-600"
+              }`}>
+                {flood.floodZone === "1" && flood.surfaceWater !== "high"
+                  ? "Very Low"
+                  : flood.floodZone === "3" || flood.surfaceWater === "high"
+                    ? "High"
+                    : "Medium"}
+              </span>
+            ) : <span className="text-sm text-muted">N/A</span>}
           </p>
-          {commuteLabel && (
-            <p className="text-[10px] text-muted mt-0.5">to {commuteLabel}</p>
+          {flood && (
+            <p className="text-[10px] text-muted mt-0.5">Zone {flood.floodZone}</p>
           )}
+        </div>
+        <div className="bg-white rounded-xl border border-border p-4 text-center">
+          <p className="text-xs text-muted">Property Type</p>
+          <p className="text-lg font-heading font-bold mt-1 text-sm">
+            {epc?.propertyType || (
+              safeStr(lastSale?.propertyType) === "D" ? "Detached" :
+              safeStr(lastSale?.propertyType) === "S" ? "Semi-Detached" :
+              safeStr(lastSale?.propertyType) === "T" ? "Terraced" :
+              safeStr(lastSale?.propertyType) === "F" ? "Flat" : "N/A"
+            )}
+          </p>
         </div>
       </div>
 
@@ -569,25 +572,10 @@ export default function BuyerReportPage() {
               { label: "Rooms", value: epc?.numberOfRooms ? String(epc.numberOfRooms) : epc === null ? "No EPC on file" : "N/A" },
               { label: "Floor Area", value: epc && epc.totalFloorArea > 0 ? `${epc.totalFloorArea} m\u00B2 (${Math.round(epc.totalFloorArea * 10.764).toLocaleString()} sqft)` : epc === null ? "No EPC on file" : "N/A" },
               { label: "Tenure", value: (() => {
-                // Land Registry estateType (F/L) is authoritative; prefer it over EPC
+                // Land Registry estateType (F/L) is authoritative
                 const lrTenure = lastSale ? safeStr(lastSale.tenure) : "";
-                if (lrTenure === "F") {
-                  console.log("[Tenure] Source: Land Registry Price Paid — Freehold");
-                  return "Freehold";
-                }
-                if (lrTenure === "L") {
-                  console.log("[Tenure] Source: Land Registry Price Paid — Leasehold");
-                  return "Leasehold";
-                }
-                // Fallback: check EPC builtForm or property type hints
-                if (epc?.builtForm) {
-                  const form = epc.builtForm.toLowerCase();
-                  if (form.includes("flat") || form.includes("maisonette")) {
-                    console.log("[Tenure] Source: EPC (inferred from built form) — Leasehold");
-                    return "Leasehold (from EPC)";
-                  }
-                }
-                console.log("[Tenure] No tenure data found in Land Registry or EPC");
+                if (lrTenure === "F") return "Freehold";
+                if (lrTenure === "L") return "Leasehold";
                 return "N/A";
               })() },
               { label: "Built Form", value: epc?.builtForm || (epc === null ? "No EPC on file" : "N/A") },
@@ -941,7 +929,7 @@ export default function BuyerReportPage() {
               </div>
               <SchoolsSection schools={schoolsData} />
             </div>
-          ) : schools.length > 0 && (
+          ) : schools.length > 0 ? (
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-4">
                 <School className="w-4 h-4 text-primary" />
@@ -986,6 +974,28 @@ export default function BuyerReportPage() {
                 ))}
               </div>
               <SourceAttribution sources={["DfE Get Information About Schools (GIAS)"]} />
+            </div>
+          ) : (
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <School className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold">Local Schools</h3>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <p className="text-sm text-amber-800">
+                  School data could not be retrieved for this area. This may be due to a
+                  temporary issue with the DfE data service. You can search for schools
+                  manually at{" "}
+                  <a
+                    href={`https://www.compare-school-performance.service.gov.uk/schools-by-type?step=default&table=schools&region=all-england&for=ofsted&basedon=Overall+effectiveness&postcode=${encodeURIComponent(report.postcode)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline hover:no-underline"
+                  >
+                    compare-school-performance.service.gov.uk
+                  </a>
+                </p>
+              </div>
             </div>
           )}
 
@@ -1345,14 +1355,14 @@ export default function BuyerReportPage() {
       {(() => {
         const links: { title: string; href: string; reason: string }[] = [];
 
-        // Crime: Police UK local area page
-        if (crime?.comparisonToAverage === "above" && crime.boroughName) {
-          const areaSlug = (report.geocode.admin_ward || "").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-          const forceSlug = "metropolitan-police";
+        // Crime: Police UK — link to homepage (area-specific URLs are unreliable)
+        if (crime) {
           links.push({
-            title: "Police UK — Local Crime Map",
-            href: `https://www.police.uk/pu/your-area/${forceSlug}/${areaSlug}/`,
-            reason: `View detailed crime data for ${crime.boroughName}`,
+            title: "Police UK — Crime Data",
+            href: "https://www.police.uk/",
+            reason: crime.comparisonToAverage === "above"
+              ? `Crime is above average in ${crime.boroughName || "this area"} — search your postcode for details`
+              : `View detailed crime statistics for ${crime.boroughName || "your area"}`,
           });
         }
 
@@ -1374,6 +1384,12 @@ export default function BuyerReportPage() {
               : `https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=${encodeURIComponent(report.postcode)}`,
             reason: `Current rating: ${epc.currentEnergyRating} (${epc.currentEnergyEfficiency}/100)`,
           });
+        } else {
+          links.push({
+            title: "Find an Energy Certificate",
+            href: `https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=${encodeURIComponent(report.postcode)}`,
+            reason: "No EPC on file — search for certificates at this postcode",
+          });
         }
 
         // Schools: DfE performance tables
@@ -1391,6 +1407,22 @@ export default function BuyerReportPage() {
             title: "TfL Journey Planner",
             href: `https://tfl.gov.uk/plan-a-journey/?from=${encodeURIComponent(report.postcode)}`,
             reason: "Plan a journey from this property",
+          });
+        }
+
+        // Land Registry: House price search
+        links.push({
+          title: "Land Registry — House Prices",
+          href: `https://www.gov.uk/search-property-information-service`,
+          reason: "Search property ownership and sale history",
+        });
+
+        // Broadband: Ofcom checker
+        if (broadband) {
+          links.push({
+            title: "Ofcom Broadband Checker",
+            href: "https://checker.ofcom.org.uk/",
+            reason: "Check broadband, mobile and TV coverage at this address",
           });
         }
 
