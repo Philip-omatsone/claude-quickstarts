@@ -1,15 +1,16 @@
-// FPL Draft Dashboard — Frontend Logic
+// OutDrafted — Frontend Logic
 
 const POS_LABELS = { 1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD' };
 const POS_CLASSES = { 1: 'pos-gk', 2: 'pos-def', 3: 'pos-mid', 4: 'pos-fwd' };
 const COLORS = [
-  '#4ecdc4', '#5b8def', '#e6a23c', '#c0392b', '#9b59b6',
-  '#3d9970', '#e74c3c', '#f39c12', '#1abc9c', '#3498db',
-  '#e67e22', '#2ecc71',
+  '#00e59b', '#6366f1', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#06b6d4', '#ec4899', '#14b8a6', '#a855f7', '#3b82f6',
+  '#f97316', '#10b981',
 ];
 
-const CHART_GRID = 'rgba(255,255,255,0.06)';
-const CHART_TICK = '#8892a0';
+const CHART_GRID = 'rgba(255,255,255,0.04)';
+const CHART_TICK = '#7d8a9b';
+const CHART_BAR_RADIUS = 6;
 
 let allPlayers = [];
 let allTransactions = [];
@@ -194,15 +195,15 @@ function renderLeague(data, gameweeks) {
     .sort((a, b) => b.points_total - a.points_total)
     .map((m, i) => `
       <tr>
-        <td>${i + 1}</td>
-        <td>${escapeHtml(m.player_name)}</td>
-        <td>${escapeHtml(m.name)}</td>
+        <td style="font-weight:700;font-size:1rem">${i + 1}</td>
+        <td style="font-weight:600">${escapeHtml(m.player_name)}</td>
+        <td style="color:var(--text-secondary)">${escapeHtml(m.name)}</td>
         <td>${m.wins}</td>
         <td>${m.draws}</td>
         <td>${m.losses}</td>
         <td>${m.points_for}</td>
         <td>${m.points_against}</td>
-        <td><strong>${m.points_total}</strong></td>
+        <td style="font-weight:700;color:var(--accent)">${m.points_total}</td>
       </tr>
     `)
     .join('');
@@ -460,9 +461,10 @@ function renderTeams(ratings) {
         {
           label: 'Points Scored',
           data: sorted.map((r) => r.actualPoints),
-          backgroundColor: COLORS.slice(0, sorted.length).map((c) => c + '66'),
+          backgroundColor: COLORS.slice(0, sorted.length).map((c) => c + '40'),
           borderColor: COLORS.slice(0, sorted.length),
           borderWidth: 1,
+          borderRadius: CHART_BAR_RADIUS,
         },
       ],
     },
@@ -485,10 +487,10 @@ function renderTeams(ratings) {
     data: {
       labels: ratings.map((r) => r.manager.player_name),
       datasets: [
-        { label: 'GK', data: ratings.map((r) => r.positionStrength['1'] || 0), backgroundColor: 'rgba(230,162,60,0.6)' },
-        { label: 'DEF', data: ratings.map((r) => r.positionStrength['2'] || 0), backgroundColor: 'rgba(91,141,239,0.6)' },
-        { label: 'MID', data: ratings.map((r) => r.positionStrength['3'] || 0), backgroundColor: 'rgba(78,205,196,0.6)' },
-        { label: 'FWD', data: ratings.map((r) => r.positionStrength['4'] || 0), backgroundColor: 'rgba(192,57,43,0.6)' },
+        { label: 'GK', data: ratings.map((r) => r.positionStrength['1'] || 0), backgroundColor: 'rgba(245,158,11,0.5)', borderRadius: CHART_BAR_RADIUS },
+        { label: 'DEF', data: ratings.map((r) => r.positionStrength['2'] || 0), backgroundColor: 'rgba(99,102,241,0.5)', borderRadius: CHART_BAR_RADIUS },
+        { label: 'MID', data: ratings.map((r) => r.positionStrength['3'] || 0), backgroundColor: 'rgba(0,229,155,0.45)', borderRadius: CHART_BAR_RADIUS },
+        { label: 'FWD', data: ratings.map((r) => r.positionStrength['4'] || 0), backgroundColor: 'rgba(239,68,68,0.5)', borderRadius: CHART_BAR_RADIUS },
       ],
     },
     options: {
@@ -556,9 +558,10 @@ function renderTrends(gameweeks, mgrs) {
       return s ? s.points : null;
     }),
     borderColor: COLORS[i % COLORS.length],
-    backgroundColor: COLORS[i % COLORS.length] + '22',
-    tension: 0.3,
-    pointRadius: 3,
+    backgroundColor: COLORS[i % COLORS.length] + '18',
+    tension: 0.35,
+    pointRadius: 2.5,
+    borderWidth: 2,
   }));
 
   charts['points-per-gw-chart'] = new Chart(ctx1, {
@@ -582,8 +585,9 @@ function renderTrends(gameweeks, mgrs) {
       label: mgrMap[mId]?.player_name || mId,
       data,
       borderColor: COLORS[i % COLORS.length],
-      tension: 0.3,
+      tension: 0.35,
       pointRadius: 2,
+      borderWidth: 2,
     };
   });
 
@@ -610,8 +614,8 @@ function renderTrends(gameweeks, mgrs) {
     data: {
       labels: events.map((e) => 'GW' + e),
       datasets: [
-        { label: 'Highest', data: highs, backgroundColor: 'rgba(61,153,112,0.4)', borderColor: '#3d9970', borderWidth: 1 },
-        { label: 'Lowest', data: lows, backgroundColor: 'rgba(192,57,43,0.4)', borderColor: '#c0392b', borderWidth: 1 },
+        { label: 'Highest', data: highs, backgroundColor: 'rgba(0,229,155,0.3)', borderColor: '#00e59b', borderWidth: 1, borderRadius: CHART_BAR_RADIUS },
+        { label: 'Lowest', data: lows, backgroundColor: 'rgba(239,68,68,0.3)', borderColor: '#ef4444', borderWidth: 1, borderRadius: CHART_BAR_RADIUS },
       ],
     },
     options: chartOptions('Points'),
@@ -634,9 +638,10 @@ function renderTrends(gameweeks, mgrs) {
       datasets: [{
         label: 'Std Deviation',
         data: consistencyData.map((c) => c.stdDev),
-        backgroundColor: consistencyData.map((_, i) => COLORS[i % COLORS.length] + '66'),
+        backgroundColor: consistencyData.map((_, i) => COLORS[i % COLORS.length] + '40'),
         borderColor: consistencyData.map((_, i) => COLORS[i % COLORS.length]),
         borderWidth: 1,
+        borderRadius: CHART_BAR_RADIUS,
       }],
     },
     options: {
@@ -650,10 +655,14 @@ function chartOptions(yLabel) {
   return {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { labels: { color: CHART_TICK } } },
+    plugins: {
+      legend: {
+        labels: { color: CHART_TICK, font: { family: "'Inter', sans-serif", size: 11 }, padding: 16 },
+      },
+    },
     scales: {
-      x: { ticks: { color: CHART_TICK }, grid: { color: CHART_GRID } },
-      y: { title: { display: true, text: yLabel, color: CHART_TICK }, ticks: { color: CHART_TICK }, grid: { color: CHART_GRID } },
+      x: { ticks: { color: CHART_TICK, font: { size: 11 } }, grid: { color: CHART_GRID } },
+      y: { title: { display: true, text: yLabel, color: CHART_TICK, font: { size: 11 } }, ticks: { color: CHART_TICK, font: { size: 11 } }, grid: { color: CHART_GRID } },
     },
   };
 }
@@ -778,10 +787,10 @@ function renderDraftAnalysis(data) {
     );
     const values = sorted.map(p => p.valueScore);
     const bgColors = values.map(v =>
-      v >= 0 ? 'rgba(61,153,112,0.5)' : 'rgba(192,57,43,0.5)'
+      v >= 0 ? 'rgba(0,229,155,0.35)' : 'rgba(239,68,68,0.35)'
     );
     const borderColors = values.map(v =>
-      v >= 0 ? '#3d9970' : '#c0392b'
+      v >= 0 ? '#00e59b' : '#ef4444'
     );
 
     destroyChart('regret-chart');
@@ -796,6 +805,7 @@ function renderDraftAnalysis(data) {
           backgroundColor: bgColors,
           borderColor: borderColors,
           borderWidth: 1,
+          borderRadius: CHART_BAR_RADIUS,
         }],
       },
       options: {
@@ -905,7 +915,7 @@ function renderActivityHeatmap(data) {
       const count = m.heatmap[e] || 0;
       const intensity = count > 0 ? Math.min(count / maxCount, 1) : 0;
       const bg = count > 0
-        ? `rgba(78,205,196,${0.1 + intensity * 0.5})`
+        ? `rgba(0,229,155,${0.08 + intensity * 0.45})`
         : 'transparent';
       const isMostActive = e === m.mostActiveGw && count > 0;
       const border = isMostActive ? 'border:1px solid var(--accent)' : '';

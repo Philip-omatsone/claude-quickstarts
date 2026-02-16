@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FPL Draft Dashboard</title>
+  <title>OutDrafted — FPL Draft Analytics</title>
   <link rel="stylesheet" href="/css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -11,11 +11,11 @@
   <!-- Setup Modal -->
   <div id="setup-modal" class="modal hidden">
     <div class="modal-content">
-      <h2>FPL Draft Dashboard</h2>
+      <h2>Out<span style="color:var(--accent)">Drafted</span></h2>
       <p>Enter your FPL Draft league ID or entry ID to get started.</p>
       <p class="hint">Your entry ID is in the URL on the Points page: draft.premierleague.com/entry/<strong>XXXXX</strong>/event/...</p>
       <div class="input-group">
-        <input type="text" id="league-id-input" placeholder="League ID or Entry ID, e.g. 35484" autocomplete="off">
+        <input type="text" id="league-id-input" placeholder="League ID or Entry ID" autocomplete="off">
         <button id="sync-btn" onclick="startSync()">Sync League</button>
       </div>
       <div id="setup-status" class="status-msg hidden"></div>
@@ -35,7 +35,7 @@
   <div id="dashboard" class="hidden">
     <header>
       <div class="header-left">
-        <h1>FPL Draft Dashboard</h1>
+        <h1>Out<span class="brand-accent">Drafted</span></h1>
         <span id="league-info" class="league-info"></span>
       </div>
       <div class="header-right">
