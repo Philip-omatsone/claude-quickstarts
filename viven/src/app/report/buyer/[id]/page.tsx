@@ -13,6 +13,7 @@ import {
   School,
   FileText,
   Download,
+  Share2,
   Home,
   Droplets,
   Mountain,
@@ -137,16 +138,28 @@ function SourceAttribution({ sources }: { sources: string[] }) {
   );
 }
 
+function isRecentTransaction(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+  return new Date(dateStr) >= sixMonthsAgo;
+}
+
 function EnrichedCompRow({ comp }: { comp: EnrichedComparable }) {
   const date = safeStr(comp.date);
   const propertyType = safeStr(comp.propertyType);
   const tenure = safeStr(comp.tenure);
   const address = safeStr(comp.address);
+  const recent = isRecentTransaction(date);
 
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-border last:border-0 text-sm">
+    <div className={`flex items-center justify-between py-2.5 border-b border-border last:border-0 text-sm ${recent ? "bg-blue-50/50 -mx-2 px-2 rounded-lg" : ""}`}>
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{address}</p>
+        <div className="flex items-center gap-2">
+          <p className="font-medium truncate">{address}</p>
+          {recent && (
+            <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded shrink-0">Recent</span>
+          )}
+        </div>
         <div className="flex gap-2 text-xs text-muted mt-0.5 flex-wrap">
           <span>{date ? new Date(date).toLocaleDateString("en-GB") : ""}</span>
           {propertyType && <span>{propertyType}</span>}
@@ -164,6 +177,44 @@ function EnrichedCompRow({ comp }: { comp: EnrichedComparable }) {
         {comp.pricePerSqft && (
           <p className="text-xs text-muted">&pound;{comp.pricePerSqft.toLocaleString()}/sqft</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function PricePerSqftChart({ comps, subjectPsf }: { comps: EnrichedComparable[]; subjectPsf: number | null }) {
+  const withPsf = comps.filter((c) => c.pricePerSqft && c.pricePerSqft > 0);
+  if (withPsf.length < 2) return null;
+
+  const allValues = withPsf.map((c) => c.pricePerSqft!);
+  if (subjectPsf && subjectPsf > 0) allValues.push(subjectPsf);
+  const maxVal = Math.max(...allValues);
+
+  return (
+    <div className="mt-4">
+      <h4 className="text-xs font-semibold text-muted uppercase mb-3">Price per sq ft comparison</h4>
+      <div className="space-y-1.5">
+        {subjectPsf && subjectPsf > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-primary font-semibold w-28 text-right shrink-0 truncate">This property</span>
+            <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${(subjectPsf / maxVal) * 100}%` }} />
+            </div>
+            <span className="text-xs font-bold text-primary w-20 text-right shrink-0">&pound;{subjectPsf.toLocaleString()}/sqft</span>
+          </div>
+        )}
+        {withPsf.slice(0, 6).map((comp, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="text-xs text-muted w-28 text-right shrink-0 truncate">{safeStr(comp.address).split(",")[0]}</span>
+            <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+              <div
+                className={`h-full rounded-full ${isRecentTransaction(safeStr(comp.date)) ? "bg-blue-400" : "bg-gray-400"}`}
+                style={{ width: `${(comp.pricePerSqft! / maxVal) * 100}%` }}
+              />
+            </div>
+            <span className="text-xs font-medium text-muted w-20 text-right shrink-0">&pound;{comp.pricePerSqft!.toLocaleString()}/sqft</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -246,14 +297,31 @@ export default function BuyerReportPage() {
               {report.geocode.region}
             </p>
           </div>
-          <button
-            onClick={() => window.print()}
-            className="bg-white/20 hover:bg-white/30 p-2.5 rounded-xl transition-colors"
-            data-print-hide
-            title="Download as PDF"
-          >
-            <Download className="w-5 h-5" />
-          </button>
+          <div className="flex gap-2" data-print-hide>
+            <button
+              onClick={() => {
+                const url = window.location.href;
+                if (navigator.share) {
+                  navigator.share({ title: `Viven Report — ${report.address}`, url });
+                } else {
+                  navigator.clipboard.writeText(url).then(() => {
+                    alert("Report link copied to clipboard!");
+                  });
+                }
+              }}
+              className="bg-white/20 hover:bg-white/30 p-2.5 rounded-xl transition-colors"
+              title="Share Report"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="bg-white/20 hover:bg-white/30 p-2.5 rounded-xl transition-colors"
+              title="Download as PDF"
+            >
+              <Download className="w-5 h-5" />
+            </button>
+          </div>
         </div>
         <div className="mt-4 text-xs text-white/60">
           Generated {new Date(report.generatedAt).toLocaleDateString("en-GB", {
@@ -430,16 +498,44 @@ export default function BuyerReportPage() {
               </p>
               <p className="text-xs text-gray-400 mt-2">
                 Official EPC rating from certificate{epc.inspectionDate ? ` lodged ${new Date(epc.inspectionDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}` : ""}.{" "}
-                View the full certificate at{" "}
                 <a
-                  href={`https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=${encodeURIComponent(report.postcode)}`}
+                  href={epc.lmkKey
+                    ? `https://find-energy-certificate.service.gov.uk/energy-certificate/${epc.lmkKey}`
+                    : `https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=${encodeURIComponent(report.postcode)}`
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline hover:no-underline"
                 >
-                  find-energy-certificate.service.gov.uk
+                  View the full EPC certificate
                 </a>
               </p>
+              {/* Upgrade cost context */}
+              {epc.currentEnergyRating !== epc.potentialEnergyRating && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-3">
+                  <p className="text-xs text-blue-800">
+                    <strong>Upgrade potential:</strong> Moving from {epc.currentEnergyRating} to {epc.potentialEnergyRating}{" "}
+                    {epc.recommendations.length > 0 ? (
+                      <>could include: {epc.recommendations.slice(0, 3).map((r, i) => (
+                        <span key={i}>
+                          {i > 0 && ", "}{r.improvement.toLowerCase()}{r.indicativeCost ? ` (${r.indicativeCost})` : ""}
+                        </span>
+                      ))}.{" "}
+                      {epc.recommendations.some(r => r.typicalSaving) && (
+                        <>Typical annual savings: {epc.recommendations.filter(r => r.typicalSaving).map(r => r.typicalSaving).join(" + ")}.</>
+                      )}
+                      </>
+                    ) : (
+                      <>typically costs {
+                        epc.currentEnergyRating === "D" && epc.potentialEnergyRating === "C" ? "£1,000–£5,000" :
+                        epc.currentEnergyRating === "E" && ["C", "D"].includes(epc.potentialEnergyRating) ? "£3,000–£10,000" :
+                        epc.currentEnergyRating === "F" ? "£5,000–£15,000" :
+                        "£1,000–£10,000"
+                      } for a property of this type, depending on improvements needed.</>
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -514,6 +610,12 @@ export default function BuyerReportPage() {
                       <EnrichedCompRow key={i} comp={comp} />
                     ))}
                   </div>
+
+                  {/* Price per sqft chart */}
+                  <PricePerSqftChart
+                    comps={[...enrichedComps.street, ...(enrichedComps.sector || [])]}
+                    subjectPsf={priceHistory.pricePerSqFt > 0 ? priceHistory.pricePerSqFt : null}
+                  />
                 </div>
               ) : priceHistory.comparableSales.length > 0 && (
                 <div className="mt-6">
@@ -531,6 +633,23 @@ export default function BuyerReportPage() {
                         </div>
                         <p className="font-semibold">{formatPrice(sale.price)}</p>
                       </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Nearby Streets section */}
+              {enrichedComps?.sector && enrichedComps.sector.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider mb-3">
+                    Nearby Streets ({enrichedComps.sector.length})
+                  </h3>
+                  <p className="text-xs text-muted mb-3">
+                    Recent sales in the same postcode sector, last 2 years
+                  </p>
+                  <div>
+                    {enrichedComps.sector.slice(0, 8).map((comp, i) => (
+                      <EnrichedCompRow key={i} comp={comp} />
                     ))}
                   </div>
                 </div>
@@ -583,30 +702,49 @@ export default function BuyerReportPage() {
             <InsightBox text="This property sits in Flood Zone 1 with low surface water risk and stable ground conditions — a positive sign for long-term structural integrity and insurance costs." />
           )}
 
-          {planning.length > 0 && (
-            <div className="mt-6">
-              <div className="flex items-center gap-2 mb-3">
-                <FileText className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-semibold">Nearby Planning Applications ({planning.length})</h3>
-              </div>
-              <div className="space-y-3">
-                {planning.slice(0, 5).map((app, i) => (
-                  <div key={i} className="bg-background rounded-xl p-4 text-sm">
-                    <div className="flex justify-between items-start">
-                      <p className="font-medium">{app.description || app.reference}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ml-2 ${
-                        app.status === "Approved" ? "bg-green-50 text-green-700" :
-                        app.status === "Refused" ? "bg-red-50 text-red-700" :
-                        "bg-amber-50 text-amber-700"
-                      }`}>{app.status}</span>
+          {planning.length > 0 && (() => {
+            const sorted = [...planning].sort((a, b) => (a.distanceKm || 99) - (b.distanceKm || 99));
+            const pending = planning.filter((a) => a.status === "Pending" || (!a.status.includes("Approved") && !a.status.includes("Refused")));
+            const approved = planning.filter((a) => a.status === "Approved" || a.status.toLowerCase().includes("approved"));
+            const refused = planning.filter((a) => a.status === "Refused" || a.status.toLowerCase().includes("refused"));
+            return (
+              <div className="mt-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <FileText className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Nearby Planning Applications ({planning.length})</h3>
+                </div>
+                <div className="flex gap-2 mb-3 text-xs flex-wrap">
+                  {pending.length > 0 && <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">{pending.length} pending</span>}
+                  {approved.length > 0 && <span className="bg-green-50 text-green-700 px-2 py-0.5 rounded-full">{approved.length} approved</span>}
+                  {refused.length > 0 && <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded-full">{refused.length} refused</span>}
+                  <span className="text-muted">within 500m</span>
+                </div>
+                <div className="space-y-3">
+                  {sorted.slice(0, 5).map((app, i) => (
+                    <div key={i} className="bg-background rounded-xl p-4 text-sm">
+                      <div className="flex justify-between items-start">
+                        <p className="font-medium">{app.description || app.reference}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ml-2 ${
+                          app.status === "Approved" || app.status.toLowerCase().includes("approved") ? "bg-green-50 text-green-700" :
+                          app.status === "Refused" || app.status.toLowerCase().includes("refused") ? "bg-red-50 text-red-700" :
+                          "bg-amber-50 text-amber-700"
+                        }`}>{app.status}</span>
+                      </div>
+                      <div className="flex justify-between text-muted mt-1">
+                        <p>{app.address}</p>
+                        {app.distanceKm > 0 && (
+                          <span className="text-xs shrink-0 ml-2">
+                            {app.distanceKm < 1 ? `${Math.round(app.distanceKm * 1000)}m` : `${app.distanceKm.toFixed(1)}km`}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-muted mt-1">{app.address}</p>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-2">Source: PlanIt (planit.org.uk)</p>
               </div>
-              <p className="text-[11px] text-gray-400 mt-2">Source: PlanIt (planit.org.uk)</p>
-            </div>
-          )}
+            );
+          })()}
         </ReportSection>
 
         {/* ──────── 4. AREA & NEIGHBOURHOOD ──────── */}
@@ -644,7 +782,7 @@ export default function BuyerReportPage() {
           )}
 
           {/* Schools — Enhanced version with performance data */}
-          {schoolsData && (schoolsData.primary.length > 0 || schoolsData.secondary.length > 0) ? (
+          {schoolsData && (schoolsData.primary.length > 0 || schoolsData.secondary.length > 0 || schoolsData.allThrough.length > 0) ? (
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-4">
                 <School className="w-4 h-4 text-primary" />
@@ -869,6 +1007,11 @@ export default function BuyerReportPage() {
                         </div>
                       ))}
                     </div>
+                    {!transport.personalCommute && (
+                      <p className="text-[11px] text-muted mt-2 italic">
+                        Default destinations shown. Personalise your commute when ordering your report.
+                      </p>
+                    )}
                   </div>
                 );
               })()}
@@ -908,6 +1051,17 @@ export default function BuyerReportPage() {
                   <p className="text-lg font-bold mt-1">{broadband.ultraFastAvailability}%</p>
                 </div>
               </div>
+              <p className="text-xs text-muted mt-3">
+                {broadband.averageDownload >= 100
+                  ? `${broadband.averageDownload} Mbps is excellent — fast enough for multiple 4K streams, video calls, and heavy home working simultaneously.`
+                  : broadband.averageDownload >= 30
+                  ? `${broadband.averageDownload} Mbps is sufficient for streaming 4K on multiple devices, video calls, and working from home.`
+                  : `${broadband.averageDownload} Mbps is modest — fine for basic browsing and standard streaming, but may struggle with multiple simultaneous video calls.`
+                }
+                {broadband.ultraFastAvailability > 0 && (
+                  ` Ultrafast (300+ Mbps) is available to ${broadband.ultraFastAvailability}% of premises in this area.`
+                )}
+              </p>
               <SourceAttribution sources={["Ofcom Connected Nations"]} />
             </div>
           )}
@@ -1000,7 +1154,37 @@ export default function BuyerReportPage() {
                   )}
                 </div>
               </div>
-              <SourceAttribution sources={["DEFRA Modelled Background Pollution Data"]} />
+              {/* Tree coverage and noise context */}
+              <div className="grid sm:grid-cols-2 gap-4 mt-4">
+                {airQuality.treeCount !== undefined && airQuality.treeCount > 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <TreePine className="w-4 h-4 text-green-600" />
+                      <span className="text-xs font-semibold text-green-800">Tree Coverage</span>
+                    </div>
+                    <p className="text-sm text-green-700">
+                      {airQuality.treeCount} trees/green features within 500m.
+                      {airQuality.treeCount > 50 ? " Excellent tree coverage for the area." :
+                       airQuality.treeCount > 20 ? " Good tree coverage." :
+                       " Moderate green coverage."}
+                    </p>
+                  </div>
+                )}
+                {airQuality.nearestMajorRoad && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Volume2 className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs font-semibold text-amber-800">Noise Context</span>
+                    </div>
+                    <p className="text-sm text-amber-700">
+                      {airQuality.nearestMajorRoad.name} is within ~{airQuality.nearestMajorRoad.distanceMetres}m.
+                      Properties near major roads may experience higher traffic noise during peak hours.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <SourceAttribution sources={["DEFRA Modelled Background Pollution Data", "OpenStreetMap"]} />
             </div>
           )}
         </ReportSection>

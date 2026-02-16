@@ -46,10 +46,9 @@ function getCrimeBarColour(count: number, boroughAvg: number | undefined): strin
     return "#6B7280";
   }
   const ratio = count / boroughAvg;
-  if (ratio <= 0.75) return "#22c55e";  // Green — well below average
-  if (ratio <= 1.1)  return "#9ca3af";  // Gray — around average
-  if (ratio <= 1.3)  return "#f59e0b";  // Amber — above average
-  return "#ef4444";                      // Red — significantly above average
+  if (ratio <= 0.8) return "#22c55e";   // Green — ≤80% of borough average
+  if (ratio <= 1.2) return "#f59e0b";   // Amber — 80-120% of borough average
+  return "#ef4444";                      // Red — >120% of borough average
 }
 
 function getComparisonDot(count: number, boroughAvg: number | undefined): string {
@@ -106,7 +105,9 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
 
       {data.map((item) => {
         const maxCount = data[0].count;
-        const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+        const maxForScale = Math.max(maxCount, item.boroughAvg || 0);
+        const pct = maxForScale > 0 ? (item.count / maxForScale) * 100 : 0;
+        const avgPct = maxForScale > 0 && item.boroughAvg ? (item.boroughAvg / maxForScale) * 100 : 0;
         const barColour = getCrimeBarColour(item.count, item.boroughAvg);
         const dot = getComparisonDot(item.count, item.boroughAvg);
         const comparison = getComparisonText(item.count, item.boroughAvg);
@@ -115,7 +116,7 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
             <span className="text-xs text-muted w-36 text-right shrink-0 truncate">
               {item.category}
             </span>
-            <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
+            <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
               <div
                 className="h-full rounded-full transition-all"
                 style={{
@@ -123,6 +124,14 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
                   backgroundColor: barColour,
                 }}
               />
+              {/* Borough average marker line */}
+              {hasBoroughData && avgPct > 0 && (
+                <div
+                  className="absolute top-0 h-full w-0.5 bg-gray-600/70"
+                  style={{ left: `${Math.min(avgPct, 100)}%` }}
+                  title={`${crime.boroughName || "Borough"} avg: ${item.boroughAvg}`}
+                />
+              )}
             </div>
             {hasRates && item.rate !== null ? (
               <span className="text-xs font-semibold text-foreground w-16 text-right shrink-0">
@@ -141,6 +150,40 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
           </div>
         );
       })}
+
+      {/* Legend */}
+      {hasBoroughData && (
+        <div className="flex items-center gap-4 mt-3 text-[10px] text-muted">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#22c55e] inline-block" /> &le;80% of avg</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b] inline-block" /> 80-120% of avg</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] inline-block" /> &gt;120% of avg</span>
+          <span className="flex items-center gap-1"><span className="w-0.5 h-3 bg-gray-600/70 inline-block" /> Borough avg</span>
+        </div>
+      )}
+
+      {/* Contextual insight */}
+      {hasBoroughData && (() => {
+        const aboveAvg = data.filter((d) => d.boroughAvg && d.count > d.boroughAvg * 1.2);
+        const highestRelative = [...data]
+          .filter((d) => d.boroughAvg && d.boroughAvg > 0)
+          .sort((a, b) => (b.count / (b.boroughAvg || 1)) - (a.count / (a.boroughAvg || 1)))
+          .slice(0, 2);
+        if (highestRelative.length > 0) {
+          const topCategories = highestRelative.map((d) => d.category).join(" and ");
+          const overallDirection = crime.comparisonToAverage === "above" ? "above" : crime.comparisonToAverage === "below" ? "below" : "around";
+          return (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 mt-3">
+              <p className="text-xs text-gray-700">
+                Overall crime is <strong>{overallDirection}</strong> the {crime.boroughName || "borough"} average.
+                {aboveAvg.length > 0
+                  ? ` The most notable categories compared to the borough are ${topCategories}.`
+                  : ` No categories are significantly above the borough average.`}
+              </p>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* Footer with units */}
       <div className="flex items-center gap-2 pt-2 border-t border-gray-100 mt-3">

@@ -154,6 +154,80 @@ export async function getTransactionHistory(
   }
 }
 
+/**
+ * Fetch transactions for the postcode sector (e.g., "SE22 0" from "SE22 0QW")
+ * for nearby streets within the last 2 years. Used for "Nearby Streets" comps.
+ */
+export async function getSectorTransactions(
+  postcode: string,
+  excludePostcode?: string
+): Promise<PropertyTransaction[]> {
+  try {
+    // Extract postcode sector: "SE22 0QW" -> "SE22 0"
+    const parts = postcode.trim().toUpperCase().split(/\s+/);
+    if (parts.length < 2) return [];
+    const sector = `${parts[0]} ${parts[1].charAt(0)}`;
+
+    // Query all transactions in the sector from the last 2 years
+    const twoYearsAgo = new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0];
+
+    const params = new URLSearchParams({
+      "min-date": twoYearsAgo,
+      _pageSize: "50",
+      _sort: "-transactionDate",
+    });
+
+    const res = await fetch(
+      `${PPD_API}.json?propertyAddress.postcode=${encodeURIComponent(sector + "*")}&${params}`,
+      {
+        next: { revalidate: 86400 },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    const items = json.result?.items || [];
+
+    const normalExclude = excludePostcode?.trim().toUpperCase();
+
+    return items
+      .map((item: Record<string, unknown>) => {
+        const addr = item.propertyAddress as Record<string, unknown> | undefined;
+        const paon = addr ? rdfStr(addr.paon) : "";
+        const street = addr ? rdfStr(addr.street) : "";
+        const town = addr ? rdfStr(addr.town) : "";
+        const pc = addr ? rdfStr(addr.postcode) : "";
+        const propType = item.propertyType as Record<string, unknown> | undefined;
+        const estType = item.estateType as Record<string, unknown> | undefined;
+
+        return {
+          transactionId: rdfStr(item.transactionId),
+          price: rdfNum(item.pricePaid),
+          dateOfTransfer: rdfStr(item.transactionDate),
+          address: [paon, street, town].filter(Boolean).join(", "),
+          postcode: pc || postcode,
+          propertyType: mapPropertyType(rdfStr(propType?.prefLabel)),
+          newBuild: Boolean(item.newBuild),
+          tenure: mapTenure(rdfStr(estType?.prefLabel)),
+          category: "Standard",
+        } as PropertyTransaction;
+      })
+      .filter((t: PropertyTransaction) => {
+        // Exclude transactions from the exact same postcode (already shown in same-street)
+        if (normalExclude && t.postcode.trim().toUpperCase().replace(/\s+/g, "") === normalExclude.replace(/\s+/g, "")) {
+          return false;
+        }
+        return t.price > 0;
+      });
+  } catch {
+    return [];
+  }
+}
+
 function mapPropertyType(label: string): string {
   const map: Record<string, string> = {
     Detached: "D",

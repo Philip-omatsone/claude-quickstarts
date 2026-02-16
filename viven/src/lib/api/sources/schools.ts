@@ -177,6 +177,17 @@ export async function getEnhancedSchools(
     let rawSchools: EnhancedSchoolInfo[] = [];
 
     if (res.ok) {
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("json")) {
+        // GIAS returned HTML instead of JSON — skip to fallback
+        const enriched = enrichBasicSchools(fallbackSchools || []);
+        return {
+          data: enriched,
+          error: enriched ? undefined : "GIAS returned HTML, used fallback",
+          cached: false,
+          fetchedAt: new Date().toISOString(),
+        };
+      }
       const json = await res.json();
       const establishments =
         json.value || json.establishments || json || [];

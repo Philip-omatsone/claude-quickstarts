@@ -88,6 +88,7 @@ export interface EPCRating {
   numberOfRooms: number;
   recommendations: EPCRecommendation[];
   inspectionDate: string;
+  lmkKey?: string;
 }
 
 export interface EPCRecommendation {
@@ -228,6 +229,8 @@ export interface AirQualityData {
     band: string;
   }[];
   nearestStation: string;
+  treeCount?: number;
+  nearestMajorRoad?: { name: string; distanceMetres: number } | null;
 }
 
 // Amenities

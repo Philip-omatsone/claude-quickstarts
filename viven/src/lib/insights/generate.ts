@@ -26,7 +26,7 @@ async function generateInsight(request: InsightRequest): Promise<string> {
         model: "claude-sonnet-4-5-20250514",
         max_tokens: 300,
         system:
-          "You are Viven, a UK property insights assistant. Generate a brief, helpful insight (2-3 sentences) for a home buyer report. Be specific, use the actual data provided, and give practical advice. Never use generic filler. Always reference specific numbers from the data. Tone: knowledgeable friend who works in property, not a salesperson.",
+          "You are Viven, a UK property insights assistant. Generate a brief, helpful insight (2-3 sentences) for a home buyer report. Be specific, use the actual data provided, and give practical advice. Never use generic filler. Always reference specific numbers from the data. NEVER estimate or suggest current property values, price growth percentages, or valuations — only reference actual recorded sale prices and dates. Tone: knowledgeable friend who works in property, not a salesperson.",
         messages: [
           {
             role: "user",
@@ -76,15 +76,11 @@ function generateFallbackInsight(request: InsightRequest): string {
     }
 
     case "Price History & Valuation": {
-      const estValue = data.estimatedValue as number;
       const lastPrice = data.lastSalePrice as number;
       const lastDate = data.lastSaleDate as string;
-      if (estValue && lastPrice && lastDate) {
-        const growth = Math.round(
-          ((estValue - lastPrice) / lastPrice) * 100
-        );
+      if (lastPrice && lastDate) {
         const year = new Date(lastDate).getFullYear();
-        return `Based on the last sale price of \u00A3${lastPrice.toLocaleString()} in ${year}, the estimated current value represents approximately ${growth}% growth. Compare this against asking prices for similar properties in the area to assess whether it's fairly priced.`;
+        return `This property last sold for \u00A3${lastPrice.toLocaleString()} in ${year}. Compare against recent comparable sales and current asking prices for similar properties nearby to assess whether the asking price looks fair.`;
       }
       return "Review recent comparable sales in the area to get a sense of fair market value for this type of property.";
     }
@@ -174,7 +170,6 @@ export async function generateAllInsights(
     generateInsight({
       section: "Price History & Valuation",
       data: {
-        estimatedValue: report.valuation?.estimatedValue,
         lastSalePrice: report.lastSalePrice,
         lastSaleDate: report.lastSaleDate,
       },

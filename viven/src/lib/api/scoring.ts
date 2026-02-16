@@ -33,85 +33,99 @@ export function calculateVivenVerdict(
 ): VivenVerdict {
   const scores: Record<string, number> = {};
 
-  // Flood Risk (0-15)
+  // Flood Risk (0-12)
   if (inputs.flood) {
     const floodZoneScore =
-      inputs.flood.floodZone === "1" ? 12 : inputs.flood.floodZone === "2" ? 6 : 0;
-    const surfaceMap = { very_low: 3, low: 2, medium: 1, high: 0 };
+      inputs.flood.floodZone === "1" ? 10 : inputs.flood.floodZone === "2" ? 5 : 0;
+    const surfaceMap = { very_low: 2, low: 1.5, medium: 1, high: 0 };
     scores.flood = floodZoneScore + (surfaceMap[inputs.flood.surfaceWater] ?? 1);
   } else {
-    scores.flood = 10; // Assume moderate if no data
+    scores.flood = 8;
   }
 
-  // Ground Stability (0-10)
+  // Ground Stability (0-8)
   if (inputs.geology) {
-    const subMap = { very_low: 10, low: 8, medium: 5, high: 2 };
-    scores.geology = subMap[inputs.geology.subsidenceRisk] ?? 6;
+    const subMap = { very_low: 8, low: 7, medium: 4, high: 1 };
+    scores.geology = subMap[inputs.geology.subsidenceRisk] ?? 5;
   } else {
-    scores.geology = 6;
+    scores.geology = 5;
   }
 
-  // Crime (0-15)
+  // Crime (0-12) — reduced from 15, smoother gradient
   if (inputs.crime) {
     scores.crime =
-      inputs.crime.comparisonToAverage === "below" ? 15 :
-      inputs.crime.comparisonToAverage === "average" ? 10 : 5;
+      inputs.crime.comparisonToAverage === "below" ? 12 :
+      inputs.crime.comparisonToAverage === "average" ? 9 : 6;
   } else {
     scores.crime = 8;
   }
 
-  // Schools (0-10)
+  // Schools (0-8)
   if (inputs.schools.length > 0) {
     const best = inputs.schools[0];
     scores.schools =
-      best.ofstedRating === "Outstanding" ? 10 :
-      best.ofstedRating === "Good" ? 7 : 3;
+      best.ofstedRating === "Outstanding" ? 8 :
+      best.ofstedRating === "Good" ? 6 : 3;
   } else {
-    scores.schools = 5;
+    scores.schools = 4;
   }
 
-  // Transport (0-15)
+  // Transport (0-12)
   if (inputs.transport?.commuteToCenter?.length) {
     const mins = inputs.transport.commuteToCenter[0].durationMinutes;
-    scores.transport = mins < 20 ? 15 : mins < 30 ? 12 : mins < 45 ? 8 : 4;
+    scores.transport = mins < 20 ? 12 : mins < 30 ? 10 : mins < 45 ? 7 : 4;
   } else if (inputs.transport?.nearestStations?.length) {
     const dist = inputs.transport.nearestStations[0].distanceKm;
-    scores.transport = dist < 0.5 ? 13 : dist < 1 ? 10 : dist < 2 ? 7 : 4;
+    scores.transport = dist < 0.5 ? 11 : dist < 1 ? 9 : dist < 2 ? 6 : 3;
   } else {
-    scores.transport = 6;
+    scores.transport = 5;
   }
 
-  // EPC (0-10)
+  // EPC (0-8) — D rating gets a milder penalty
   if (inputs.epc) {
-    const ratingMap: Record<string, number> = { A: 10, B: 9, C: 7, D: 5, E: 3, F: 1, G: 0 };
-    scores.epc = ratingMap[inputs.epc.currentEnergyRating] ?? 5;
+    const ratingMap: Record<string, number> = { A: 8, B: 7, C: 6, D: 5, E: 3, F: 1, G: 0 };
+    scores.epc = ratingMap[inputs.epc.currentEnergyRating] ?? 4;
   } else {
-    scores.epc = 5;
+    scores.epc = 4;
   }
 
-  // Price Value (0-15)
+  // Price Value (0-12)
   if (inputs.priceHistory && inputs.priceHistory.areaAverage > 0) {
     const latest = inputs.priceHistory.transactions[0]?.price || 0;
     if (latest > 0) {
       const ratio = latest / inputs.priceHistory.areaAverage;
-      scores.priceValue = ratio < 0.85 ? 15 : ratio < 0.95 ? 12 : ratio < 1.05 ? 10 : ratio < 1.15 ? 7 : 4;
+      scores.priceValue = ratio < 0.85 ? 12 : ratio < 0.95 ? 10 : ratio < 1.05 ? 8 : ratio < 1.15 ? 6 : 4;
     } else {
-      scores.priceValue = 8;
+      scores.priceValue = 7;
     }
   } else {
-    scores.priceValue = 8;
+    scores.priceValue = 7;
   }
 
-  // Amenities (0-10)
+  // Liveability / Amenities (0-15) — increased from 10, covers walkability and amenities
   const amenityCount = inputs.amenities.length;
-  scores.amenities = Math.min(10, Math.round((amenityCount / 25) * 10));
+  const parks = inputs.amenities.filter((a) => a.category === "park").length;
+  let liveability = Math.min(10, Math.round((amenityCount / 20) * 10));
+  if (parks >= 3) liveability += 3;
+  else if (parks >= 1) liveability += 2;
+  if (inputs.transport?.nearestStations?.length && inputs.transport.nearestStations[0].distanceKm < 0.8) {
+    liveability += 2;
+  }
+  scores.liveability = Math.min(15, liveability);
 
-  const totalScore = Math.min(100, Math.max(0,
-    scores.flood + scores.geology + scores.crime + scores.schools +
-    scores.transport + scores.epc + scores.priceValue + scores.amenities
-  ));
+  // Air Quality bonus (0-5)
+  if (inputs.airQuality) {
+    scores.airQuality = inputs.airQuality.index <= 3 ? 5 : inputs.airQuality.index <= 6 ? 3 : 1;
+  } else {
+    scores.airQuality = 3;
+  }
 
-  // Generate pills
+  // Total: 12+8+12+8+12+8+12+15+5 = 92 max base, normalise to 100
+  const rawTotal = scores.flood + scores.geology + scores.crime + scores.schools +
+    scores.transport + scores.epc + scores.priceValue + scores.liveability + scores.airQuality;
+  const totalScore = Math.min(100, Math.max(0, Math.round(rawTotal * (100 / 92))));
+
+  // Generate pills — expanded set
   const pills: VivenVerdict["pills"] = [];
 
   if (inputs.flood) {
@@ -154,32 +168,49 @@ export function calculateVivenVerdict(
     pills.push({ label: "Fast Broadband", type: "positive" });
   }
 
-  // Generate summary
+  // New pills for liveability
+  if (scores.liveability >= 12) {
+    pills.push({ label: "High Walkability", type: "positive" });
+  }
+  if (parks >= 5) {
+    pills.push({ label: "Good Green Space", type: "positive" });
+  }
+  if (inputs.airQuality && inputs.airQuality.index <= 3) {
+    pills.push({ label: "Good Air Quality", type: "positive" });
+  }
+
+  // Generate summary — more balanced and specific
   const opening =
     totalScore >= 75 ? `A solid buy in ${area}.` :
-    totalScore >= 60 ? `A reasonable option in ${area} with some considerations.` :
+    totalScore >= 65 ? `A well-rounded option in ${area} with strong local amenities.` :
+    totalScore >= 55 ? `A reasonable option in ${area} — good liveability with some considerations.` :
     totalScore >= 40 ? `Worth investigating further in ${area}, but proceed with caution.` :
-    `Significant concerns in ${area} \u2014 thorough due diligence recommended.`;
+    `Significant concerns in ${area} — thorough due diligence recommended.`;
 
   const parts: string[] = [opening];
 
-  if (scores.flood >= 12) {
-    parts.push(`The area benefits from low flood risk and good ground stability.`);
+  // Positive points
+  const positives: string[] = [];
+  if (scores.flood >= 10) positives.push("low flood risk");
+  if (scores.geology >= 6) positives.push("good ground stability");
+  if (scores.liveability >= 10) positives.push("excellent walkability");
+  if (scores.transport >= 9) positives.push("strong transport links");
+  if (positives.length > 0) {
+    parts.push(`The area benefits from ${positives.join(", ")}.`);
   }
-  if (scores.crime >= 12) {
-    parts.push(`Crime rates are below the local average, which is encouraging.`);
-  }
-  if (scores.schools >= 7) {
-    parts.push(`There are good schools nearby, adding to the area's family appeal.`);
-  }
-  if (scores.transport >= 12) {
-    parts.push(`Excellent transport links make commuting straightforward.`);
+
+  // Considerations
+  const concerns: string[] = [];
+  if (scores.crime <= 6) concerns.push(`crime rates are above the ${area} average`);
+  if (scores.epc <= 4 && inputs.epc) concerns.push(`the EPC rating of ${inputs.epc.currentEnergyRating} presents an improvement opportunity`);
+  if (concerns.length > 0) {
+    parts.push(`${concerns.map((c) => c.charAt(0).toUpperCase() + c.slice(1)).join(". ")}, which is worth factoring in.`);
   }
 
   return {
     score: totalScore,
     summary: parts.slice(0, 3).join(" "),
-    pills: pills.slice(0, 6),
+    pills: pills.slice(0, 8),
   };
 }
 
@@ -252,14 +283,22 @@ export function calculateVibeScores(
     `${restaurants} restaurants, cafes & pubs within 1km`,
   ];
 
-  // Family Friendly
-  const crimeBonus = crime?.comparisonToAverage === "below" ? 3 : crime?.comparisonToAverage === "average" ? 2 : 0;
-  const familyRaw = Math.round(parks + shops + gps + crimeBonus);
+  // Family Friendly — crime above average should penalise the score
+  const crimeMod = crime?.comparisonToAverage === "below" ? 3 : crime?.comparisonToAverage === "average" ? 1 : -2;
+  const familyRaw = Math.round(parks + shops + gps + crimeMod);
   const familyFriendly = Math.max(1, Math.min(10, familyRaw));
 
+  const familyStrengths: string[] = [];
+  const familyWeaknesses: string[] = [];
+  if (parks >= 3) familyStrengths.push(`${parks} parks`);
+  if (gps >= 3) familyStrengths.push(`${gps} GPs`);
+  if (shops >= 3) familyStrengths.push(`${shops} shops`);
+  if (crime?.comparisonToAverage === "below") familyStrengths.push("low crime");
+  if (crime?.comparisonToAverage === "above") familyWeaknesses.push("above-average crime for the area");
+
   const familyDataPoints = [
-    `${parks} parks, ${shops} shops, ${gps} GPs nearby`,
-    `Crime level: ${crime?.comparisonToAverage || "unknown"}`,
+    familyStrengths.length > 0 ? `Strong: ${familyStrengths.join(", ")}` : `${parks} parks, ${shops} shops, ${gps} GPs nearby`,
+    ...(familyWeaknesses.length > 0 ? [`Weaker: ${familyWeaknesses.join(", ")}`] : []),
   ];
 
   // Nightlife

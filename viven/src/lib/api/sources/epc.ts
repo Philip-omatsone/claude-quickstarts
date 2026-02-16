@@ -214,6 +214,17 @@ function fuzzyMatchAddress(
 }
 
 function parseEPCRow(row: Record<string, string>): EPCRating {
+  // Parse recommendations from the row if available
+  const recommendations: EPCRating["recommendations"] = [];
+  for (let i = 1; i <= 5; i++) {
+    const improvement = row[`improvement-${i}`] || row[`improvement-item-${i}-text`];
+    const cost = row[`improvement-${i}-cost`] || row[`improvement-item-${i}-indicative-cost`] || "";
+    const saving = row[`improvement-${i}-saving`] || row[`improvement-item-${i}-typical-saving`] || "";
+    if (improvement) {
+      recommendations.push({ improvement, indicativeCost: cost, typicalSaving: saving });
+    }
+  }
+
   return {
     address: row.address || "",
     currentEnergyRating: row["current-energy-rating"] || "",
@@ -228,8 +239,9 @@ function parseEPCRow(row: Record<string, string>): EPCRating {
     builtForm: row["built-form"] || "",
     totalFloorArea: parseFloat(row["total-floor-area"] || "0"),
     numberOfRooms: parseInt(row["number-habitable-rooms"] || "0"),
-    recommendations: [],
+    recommendations,
     inspectionDate: row["inspection-date"] || "",
+    lmkKey: row["lmk-key"] || row["lmk_key"] || undefined,
   };
 }
 

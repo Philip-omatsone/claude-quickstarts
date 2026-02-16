@@ -1,6 +1,6 @@
 import { BuyerReport, RentalReport, GeocodeResult, UserPreferences } from "./types";
 import { calculateVivenVerdict, calculateVibeScores } from "./scoring";
-import { getTransactionHistory } from "./sources/land-registry";
+import { getTransactionHistory, getSectorTransactions } from "./sources/land-registry";
 import { getEPCRating, searchEPCByAddress } from "./sources/epc";
 import { getFloodRisk } from "./sources/environment-agency";
 import { getCrimeData } from "./sources/police-api";
@@ -93,9 +93,27 @@ export async function generateBuyerReport(
       })
     );
 
+    // Also fetch sector-level comparables (nearby streets)
+    let sectorComps: typeof enriched = [];
+    try {
+      const sectorTxns = await getSectorTransactions(postcode, postcode);
+      sectorComps = await Promise.all(
+        sectorTxns.slice(0, 10).map(async (comp) => {
+          const houseNum = comp.address.match(/^\d+[A-Za-z]?/)?.[0];
+          let compEpc = null;
+          if (houseNum) {
+            try {
+              compEpc = await searchEPCByAddress(comp.postcode, houseNum);
+            } catch { /* Non-critical */ }
+          }
+          return enrichComparableWithEPC(comp, compEpc, "sector");
+        })
+      );
+    } catch { /* Non-critical */ }
+
     priceHistory.enrichedComparables = {
       street: enriched,
-      sector: [],
+      sector: sectorComps,
       outcode: [],
     };
   }

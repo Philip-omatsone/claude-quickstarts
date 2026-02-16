@@ -10,24 +10,26 @@ function GeneratingContent() {
   const postcode = searchParams.get("postcode") || "";
   const address = searchParams.get("address") || "";
   const [status, setStatus] = useState("Generating your report...");
+  const [detail, setDetail] = useState("");
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     const steps = [
-      { msg: "Geocoding postcode...", pct: 10 },
-      { msg: "Fetching price history...", pct: 25 },
-      { msg: "Checking flood & subsidence risk...", pct: 40 },
-      { msg: "Analysing crime data...", pct: 55 },
-      { msg: "Finding nearby schools...", pct: 65 },
-      { msg: "Checking transport links...", pct: 75 },
-      { msg: "Gathering area insights...", pct: 85 },
-      { msg: "Compiling report...", pct: 95 },
+      { msg: "Looking up property details...", pct: 10, detail: "EPC Register & Land Registry" },
+      { msg: "Checking environmental risks...", pct: 25, detail: "Environment Agency & BGS Geology" },
+      { msg: "Analysing local crime data...", pct: 40, detail: "Police UK — 12 months of data" },
+      { msg: "Calculating commute times...", pct: 55, detail: "TfL Journey Planner & OSRM" },
+      { msg: "Finding nearby schools...", pct: 65, detail: "GIAS — Ofsted ratings & performance" },
+      { msg: "Assessing neighbourhood amenities...", pct: 75, detail: "OpenStreetMap & Google Places" },
+      { msg: "Checking broadband & air quality...", pct: 85, detail: "Ofcom & DEFRA" },
+      { msg: "Generating your Viven Verdict...", pct: 95, detail: "Scoring across 9 factors" },
     ];
 
     let i = 0;
     const interval = setInterval(() => {
       if (i < steps.length) {
         setStatus(steps[i].msg);
+        setDetail(steps[i].detail);
         setProgress(steps[i].pct);
         i++;
       }
@@ -84,22 +86,26 @@ function GeneratingContent() {
           {status}
         </h1>
 
+        {detail && (
+          <p className="text-xs text-primary/70 mt-1">{detail}</p>
+        )}
+
         <p className="text-muted mt-3">
           {address || postcode}
         </p>
 
         {/* Progress bar */}
-        <div className="mt-8 w-full bg-gray-200 rounded-full h-2">
+        <div className="mt-8 w-full bg-gray-200 rounded-full h-2.5">
           <div
-            className="bg-primary h-2 rounded-full transition-all duration-500"
+            className="bg-primary h-2.5 rounded-full transition-all duration-500"
             style={{ width: `${progress}%` }}
           />
         </div>
         <p className="text-sm text-muted mt-2">{progress}%</p>
 
         <p className="text-xs text-muted mt-8">
-          We&apos;re pulling data from 15+ sources including Land Registry,
-          Environment Agency, Police UK, and more.
+          Pulling data from 17 sources: Land Registry, EPC Register,
+          Environment Agency, Police UK, TfL, Ofcom, DEFRA, and more.
         </p>
       </div>
     </div>
