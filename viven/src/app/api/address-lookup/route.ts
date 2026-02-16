@@ -96,6 +96,9 @@ async function fetchLandRegistryAddresses(
     const seen = new Set<string>();
     const addresses: { address: string; paon: string; street: string; town: string }[] = [];
 
+    // Normalise key: uppercase, strip all non-alphanumeric
+    const normalise = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
     for (const item of items) {
       const addr = item.propertyAddress;
       if (!addr) continue;
@@ -105,7 +108,7 @@ async function fetchLandRegistryAddresses(
       const town = addr.town || "";
       const parts = [paon, street, town].filter(Boolean);
       const full = parts.join(", ");
-      const key = full.toLowerCase();
+      const key = normalise(full);
 
       if (!seen.has(key) && full) {
         seen.add(key);
@@ -151,11 +154,14 @@ async function fetchEPCAddresses(
     const seen = new Set<string>();
     const addresses: { address: string; paon: string; street: string; town: string }[] = [];
 
+    // Normalise key: uppercase, strip all non-alphanumeric (matches merge logic)
+    const normalise = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
     for (const row of rows) {
       const rawAddr = row.address || "";
       if (!rawAddr) continue;
 
-      const key = rawAddr.toLowerCase().replace(/[,\s]+/g, " ").trim();
+      const key = normalise(rawAddr);
       if (seen.has(key)) continue;
       seen.add(key);
 

@@ -150,7 +150,11 @@ function EnrichedCompRow({ comp }: { comp: EnrichedComparable }) {
           <span>{date ? new Date(date).toLocaleDateString("en-GB") : ""}</span>
           {propertyType && <span>{propertyType}</span>}
           {comp.bedrooms && <span>{comp.bedrooms} bed</span>}
-          {comp.floorAreaSqm && <span>{comp.floorAreaSqm}m&sup2;</span>}
+          {comp.floorAreaSqm && (
+            <span>
+              {comp.floorAreaSqm} m&sup2; ({Math.round(comp.floorAreaSqm * 10.764).toLocaleString()} sqft)
+            </span>
+          )}
           {tenure && <span>{tenure}</span>}
         </div>
       </div>
@@ -219,7 +223,10 @@ export default function BuyerReportPage() {
   const insights = report.insights;
   const valuation = priceHistory?.valuation;
   const enrichedComps = priceHistory?.enrichedComparables;
-  const commuteMin = transport?.commuteToCenter?.[0]?.durationMinutes;
+  // Use fastest default commute (London Bridge, etc.) for the header stat
+  const fastestCommute = transport?.defaultCommutes?.[0];
+  const commuteMin = fastestCommute?.durationMinutes ?? transport?.commuteToCenter?.[0]?.durationMinutes;
+  const commuteLabel = fastestCommute?.destinationLabel;
 
   return (
     <div className="page-transition max-w-4xl mx-auto px-4 pt-8 pb-16">
@@ -238,7 +245,12 @@ export default function BuyerReportPage() {
               {report.geocode.region}
             </p>
           </div>
-          <button className="bg-white/20 hover:bg-white/30 p-2.5 rounded-xl transition-colors">
+          <button
+            onClick={() => window.print()}
+            className="bg-white/20 hover:bg-white/30 p-2.5 rounded-xl transition-colors"
+            data-print-hide
+            title="Download as PDF"
+          >
             <Download className="w-5 h-5" />
           </button>
         </div>
@@ -248,6 +260,14 @@ export default function BuyerReportPage() {
           })} | Report ID: {report.id}
         </div>
       </div>
+
+      {/* ──────── ADDRESS WARNING ──────── */}
+      {report.addressWarning && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800">{report.addressWarning}</p>
+        </div>
+      )}
 
       {/* ──────── VIVEN VERDICT ──────── */}
       {verdict && (
@@ -328,7 +348,7 @@ export default function BuyerReportPage() {
               <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-white text-sm ${epcColor(epc.currentEnergyRating)}`}>
                 {epc.currentEnergyRating}
               </span>
-            ) : "N/A"}
+            ) : <span className="text-sm text-muted">No EPC</span>}
           </p>
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
@@ -336,6 +356,9 @@ export default function BuyerReportPage() {
           <p className="text-lg font-heading font-bold mt-1">
             {commuteMin ? `${commuteMin} min` : "N/A"}
           </p>
+          {commuteLabel && (
+            <p className="text-[10px] text-muted mt-0.5">to {commuteLabel}</p>
+          )}
         </div>
       </div>
 
@@ -345,19 +368,34 @@ export default function BuyerReportPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border rounded-xl overflow-hidden border border-border">
             {[
               { label: "Type", value: epc?.propertyType || (safeStr(lastSale?.propertyType) === "D" ? "Detached" : safeStr(lastSale?.propertyType) === "S" ? "Semi-Detached" : safeStr(lastSale?.propertyType) === "T" ? "Terraced" : safeStr(lastSale?.propertyType) === "F" ? "Flat" : "N/A") },
-              { label: "Rooms", value: epc?.numberOfRooms ? String(epc.numberOfRooms) : "N/A" },
-              { label: "Floor Area", value: epc && epc.totalFloorArea > 0 ? `${epc.totalFloorArea} m\u00B2 (${Math.round(epc.totalFloorArea * 10.764).toLocaleString()} sqft)` : "N/A" },
+              { label: "Rooms", value: epc?.numberOfRooms ? String(epc.numberOfRooms) : epc === null ? "No EPC on file" : "N/A" },
+              { label: "Floor Area", value: epc && epc.totalFloorArea > 0 ? `${epc.totalFloorArea} m\u00B2 (${Math.round(epc.totalFloorArea * 10.764).toLocaleString()} sqft)` : epc === null ? "No EPC on file" : "N/A" },
               { label: "Tenure", value: (() => {
-                // Land Registry tenure (F/L) is authoritative; prefer it over EPC
+                // Land Registry estateType (F/L) is authoritative; prefer it over EPC
                 const lrTenure = lastSale ? safeStr(lastSale.tenure) : "";
-                if (lrTenure === "F") return "Freehold";
-                if (lrTenure === "L") return "Leasehold";
+                if (lrTenure === "F") {
+                  console.log("[Tenure] Source: Land Registry Price Paid — Freehold");
+                  return "Freehold";
+                }
+                if (lrTenure === "L") {
+                  console.log("[Tenure] Source: Land Registry Price Paid — Leasehold");
+                  return "Leasehold";
+                }
+                // Fallback: check EPC builtForm or property type hints
+                if (epc?.builtForm) {
+                  const form = epc.builtForm.toLowerCase();
+                  if (form.includes("flat") || form.includes("maisonette")) {
+                    console.log("[Tenure] Source: EPC (inferred from built form) — Leasehold");
+                    return "Leasehold (from EPC)";
+                  }
+                }
+                console.log("[Tenure] No tenure data found in Land Registry or EPC");
                 return "N/A";
               })() },
-              { label: "Built Form", value: epc?.builtForm || "N/A" },
+              { label: "Built Form", value: epc?.builtForm || (epc === null ? "No EPC on file" : "N/A") },
               { label: "Last Sale", value: lastSale ? formatPrice(lastSale.price) : "N/A" },
               { label: "Last Sale Date", value: lastSale ? new Date(safeStr(lastSale.dateOfTransfer)).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A" },
-              { label: "EPC Rating", value: epc ? `${epc.currentEnergyRating} (${epc.currentEnergyEfficiency}/100)` : "N/A" },
+              { label: "EPC Rating", value: epc ? `${epc.currentEnergyRating} (${epc.currentEnergyEfficiency}/100)` : "No EPC on file" },
             ].map((item) => (
               <div key={item.label} className="bg-white p-3 text-center">
                 <p className="text-xs text-muted">{item.label}</p>
@@ -410,12 +448,14 @@ export default function BuyerReportPage() {
             </div>
           )}
 
-          {!epc && !lastSale && (
+          {!epc && (
             <div className="mt-4 bg-background rounded-xl p-4">
               <p className="text-muted text-sm">
-                No EPC record found — the property may predate the requirement or not yet have a certificate.
+                No EPC record found for this property — it may predate the EPC requirement
+                or not yet have a certificate on file. All other data sources (Land Registry,
+                flood risk, crime, transport, broadband) are unaffected.
                 {priceHistory && priceHistory.transactions.length > 0 && (
-                  <> See price history below for area transaction data.</>
+                  <> See price history below for transaction data.</>
                 )}
               </p>
             </div>
@@ -527,6 +567,34 @@ export default function BuyerReportPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+
+                  {/* Value-Add Potential */}
+                  <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <p className="text-[13px] font-semibold text-green-900 mb-2">
+                      Value-Add Potential
+                    </p>
+                    <p className="text-[12.5px] text-green-800 leading-relaxed mb-3">
+                      Extensions, loft conversions, and renovations could materially increase
+                      this property&apos;s value. Typical uplifts based on industry data:
+                    </p>
+                    <div className="space-y-1.5">
+                      {[
+                        { label: "Loft conversion", pct: "10\u201315%", low: 0.10, high: 0.15 },
+                        { label: "Rear extension", pct: "10\u201320%", low: 0.10, high: 0.20 },
+                        { label: "Kitchen renovation", pct: "3\u20135%", low: 0.03, high: 0.05 },
+                      ].map((item) => (
+                        <div key={item.label} className="flex justify-between text-[12.5px]">
+                          <span className="text-green-700">{item.label} ({item.pct})</span>
+                          <span className="font-medium text-green-900">
+                            +{formatPrice(Math.round(valuation.estimatedValue * item.low))} &ndash; {formatPrice(Math.round(valuation.estimatedValue * item.high))}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-green-600 mt-2">
+                      Estimates based on projected value of {formatPrice(valuation.estimatedValue)}. Subject to planning permission and build quality.
+                    </p>
                   </div>
 
                   {/* Caveat — always visible, prominent */}
@@ -706,10 +774,18 @@ export default function BuyerReportPage() {
               <div className="flex items-center gap-2 mb-4">
                 <School className="w-4 h-4 text-primary" />
                 <h3 className="text-sm font-semibold">Nearby Schools</h3>
+                <span className="text-xs text-muted">
+                  (Primary within 1km, Secondary within 2km)
+                </span>
               </div>
               <div className="space-y-2">
-                {schools.slice(0, 8).map((school, i) => (
-                  <div key={i} className="flex items-center justify-between py-2.5 border-b border-border last:border-0 text-sm">
+                {schools.slice(0, 10).map((school, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center justify-between py-2.5 border-b border-border last:border-0 text-sm ${
+                      school.ofstedRating === "Outstanding" ? "bg-green-50/50 -mx-2 px-2 rounded-lg" : ""
+                    }`}
+                  >
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                         school.ofstedRating === "Outstanding" ? "bg-green-100" :
@@ -720,12 +796,17 @@ export default function BuyerReportPage() {
                           : <School className="w-4 h-4 text-blue-600" />}
                       </div>
                       <div>
-                        <p className="font-medium">{school.name}</p>
-                        <p className="text-xs text-muted capitalize">{school.type} | {school.distanceKm}km</p>
+                        <p className={`font-medium ${school.ofstedRating === "Outstanding" ? "text-green-800" : ""}`}>
+                          {school.name}
+                        </p>
+                        <p className="text-xs text-muted capitalize">
+                          {school.type} | {school.distanceKm}km
+                          {school.ageRange ? ` | Ages ${school.ageRange}` : ""}
+                        </p>
                       </div>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      school.ofstedRating === "Outstanding" ? "bg-green-50 text-green-700" :
+                      school.ofstedRating === "Outstanding" ? "bg-green-50 text-green-700 font-semibold" :
                       school.ofstedRating === "Good" ? "bg-blue-50 text-blue-700" :
                       "bg-gray-100 text-gray-700"
                     }`}>{school.ofstedRating}</span>
@@ -1041,6 +1122,70 @@ export default function BuyerReportPage() {
           )}
         </ReportSection>
       </div>
+
+      {/* ──────── RECOMMENDED READING ──────── */}
+      {(() => {
+        const guides: { title: string; href: string; reason: string }[] = [];
+        // Leasehold property
+        const lrTenure = lastSale ? safeStr(lastSale.tenure) : "";
+        if (lrTenure === "L") {
+          guides.push({
+            title: "Understanding Leasehold",
+            href: "/buyers/guides/leasehold-vs-freehold",
+            reason: "This property is leasehold",
+          });
+        }
+        // Poor EPC rating
+        if (epc && ["E", "F", "G"].includes(epc.currentEnergyRating)) {
+          guides.push({
+            title: "Energy Efficiency Guide",
+            href: "/buyers/guides/buildings-insurance",
+            reason: `This property has an EPC rating of ${epc.currentEnergyRating}`,
+          });
+        }
+        // Above-average crime
+        if (crime?.comparisonToAverage === "above") {
+          guides.push({
+            title: "Understanding Crime Statistics",
+            href: "/buyers/guides/buying-in-london",
+            reason: `Crime is above average for ${crime.boroughName || "the borough"}`,
+          });
+        }
+        // Flood risk present
+        if (flood && (flood.floodZone !== "1" || flood.riverAndSea === "medium" || flood.riverAndSea === "high" || flood.surfaceWater === "medium" || flood.surfaceWater === "high")) {
+          guides.push({
+            title: "Flood Zone Guide",
+            href: "/buyers/guides/surveys",
+            reason: `This property is in Flood Zone ${flood.floodZone}`,
+          });
+        }
+        if (guides.length === 0) return null;
+        return (
+          <div className="mt-8 bg-white rounded-2xl border border-border p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <FileText className="w-5 h-5 text-primary" />
+              <h2 className="font-heading text-lg font-bold">Recommended Reading</h2>
+            </div>
+            <div className="space-y-3">
+              {guides.map((guide, i) => (
+                <a
+                  key={i}
+                  href={guide.href}
+                  className="flex items-center justify-between p-3 bg-background rounded-xl hover:bg-gray-100 transition-colors group"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                      {guide.title}
+                    </p>
+                    <p className="text-xs text-muted mt-0.5">{guide.reason}</p>
+                  </div>
+                  <span className="text-primary text-sm shrink-0 ml-3">&rarr;</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ──────── REPORT DISCLAIMER ──────── */}
       <div className="mt-8 bg-gray-50 rounded-2xl border border-gray-200 p-6">

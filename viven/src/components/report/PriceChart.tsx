@@ -78,8 +78,8 @@ export function PriceChart({ transactions, projectedValue }: PriceChartProps) {
               axisLine={false}
             />
             <Tooltip
-              formatter={(value: number | undefined, name: string) => [
-                formatPrice(value ?? 0),
+              formatter={(value: unknown, name?: string) => [
+                formatPrice(typeof value === "number" ? value : 0),
                 name === "projected" ? "Projected Value" : "Price",
               ]}
               contentStyle={{

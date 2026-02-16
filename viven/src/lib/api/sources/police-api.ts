@@ -90,6 +90,14 @@ export async function getCrimeData(
     const trendResults = await Promise.all(monthPromises);
     const monthlyTrend = trendResults.reverse();
 
+    // Police UK data typically lags 1-2 months. Treat zero counts in the most
+    // recent 2 months as "data not yet available" (−1) rather than "zero crime".
+    for (let idx = monthlyTrend.length - 1; idx >= Math.max(0, monthlyTrend.length - 2); idx--) {
+      if (monthlyTrend[idx].count === 0) {
+        monthlyTrend[idx].count = -1; // signals data unavailable
+      }
+    }
+
     const totalCrimes = crimes.length;
 
     // Determine the date range covered

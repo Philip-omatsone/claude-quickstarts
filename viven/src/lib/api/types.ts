@@ -129,6 +129,7 @@ export interface SchoolInfo {
   numberOfPupils: number;
   address: string;
   urn: string;
+  ageRange?: string;
 }
 
 // Commute result for personalised commute
@@ -307,6 +308,7 @@ export interface BuyerReport {
     riskAssessment?: string;
     areaNeighbourhood?: string;
   };
+  addressWarning?: string;
 }
 
 // Rental Report (free subset)

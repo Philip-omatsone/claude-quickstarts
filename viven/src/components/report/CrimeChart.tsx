@@ -220,7 +220,7 @@ export function CrimeTrendChart({ crime }: CrimeChartProps) {
       </ResponsiveContainer>
       {unavailableMonths > 0 && (
         <p className="text-[10px] text-muted mt-1">
-          {unavailableMonths} month{unavailableMonths > 1 ? "s" : ""} with no data available (shown as gaps)
+          {unavailableMonths} month{unavailableMonths > 1 ? "s" : ""} with no data available (Police UK data typically lags 1-2 months)
         </p>
       )}
     </div>
