@@ -608,10 +608,10 @@ export default function BuyerReportPage() {
                   "bg-amber-50 text-amber-700"
                 }`}>
                   {crime.comparisonToAverage === "below"
-                    ? `Lower than average${crime.boroughName ? ` for ${crime.boroughName}` : ""}`
+                    ? `Below average compared to ${crime.boroughName || "the borough"} as a whole`
                     : crime.comparisonToAverage === "above"
-                    ? `Higher than average${crime.boroughName ? ` for ${crime.boroughName}` : ""}`
-                    : `Around average${crime.boroughName ? ` for ${crime.boroughName}` : ""}`
+                    ? `Above average compared to ${crime.boroughName || "the borough"} as a whole`
+                    : `Around average for ${crime.boroughName || "the borough"}`
                   }
                 </span>
               </div>

@@ -5,12 +5,14 @@ const BASE_URL = "https://data.police.uk/api";
 
 export async function getCrimeData(
   latitude: number,
-  longitude: number
+  longitude: number,
+  adminDistrict?: string
 ): Promise<DataSourceResponse<CrimeData>> {
   try {
-    // Step 1: Locate the neighbourhood to get force + neighbourhood for comparison
+    // Step 1: Locate the neighbourhood to get force for comparison data
     let forceName = "";
-    let boroughName = "";
+    // Use the admin_district (borough) name for clear comparison — NOT the Police neighbourhood name
+    const boroughName = adminDistrict || "";
     try {
       const locateRes = await fetch(
         `${BASE_URL}/locate-neighbourhood?q=${latitude},${longitude}`
@@ -18,17 +20,6 @@ export async function getCrimeData(
       if (locateRes.ok) {
         const locateData = await locateRes.json();
         forceName = locateData.force || "";
-        const nhoodId = locateData.neighbourhood || "";
-        // Get neighbourhood name for display
-        if (forceName && nhoodId) {
-          const nhoodRes = await fetch(
-            `${BASE_URL}/${forceName}/${nhoodId}`
-          );
-          if (nhoodRes.ok) {
-            const nhoodData = await nhoodRes.json();
-            boroughName = nhoodData.name || "";
-          }
-        }
       }
     } catch {
       // Non-critical — we can still show crime data without comparison
@@ -69,9 +60,6 @@ export async function getCrimeData(
             for (const c of forceData) {
               forceCounts[c.category] = (forceCounts[c.category] || 0) + 1;
             }
-            // Approximate: divide force total by number of neighbourhoods
-            // Police UK doesn't give per-neighbourhood averages directly,
-            // so we use the force-wide count as a comparison baseline
             boroughAverages = forceCounts;
           }
         }
@@ -81,6 +69,7 @@ export async function getCrimeData(
     }
 
     // Step 4: Get 12 months of trend data
+    // Use null for months that fail or return empty — NOT zero (zero implies no crime)
     const now = new Date();
     const monthPromises = Array.from({ length: 12 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - i - 1, 1);
@@ -88,12 +77,14 @@ export async function getCrimeData(
       return fetch(
         `${BASE_URL}/crimes-street/all-crime?date=${dateStr}&lat=${latitude}&lng=${longitude}`
       )
-        .then((r) => (r.ok ? r.json() : []))
-        .then((data: unknown[]) => ({
-          month: dateStr,
-          count: data.length,
-        }))
-        .catch(() => ({ month: dateStr, count: 0 }));
+        .then((r) => {
+          if (!r.ok) return { month: dateStr, count: -1 }; // -1 signals data unavailable
+          return r.json().then((data: unknown[]) => ({
+            month: dateStr,
+            count: data.length,
+          }));
+        })
+        .catch(() => ({ month: dateStr, count: -1 }));
     });
 
     const trendResults = await Promise.all(monthPromises);

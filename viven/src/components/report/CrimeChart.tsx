@@ -43,23 +43,23 @@ function formatCategory(raw: string): string {
 // Colour bars by severity relative to borough average
 function getCrimeBarColour(count: number, boroughAvg: number | undefined): string {
   if (!boroughAvg || boroughAvg === 0) {
-    // No comparison data — graduated grey to red based on position
     return "#6B7280";
   }
   const ratio = count / boroughAvg;
   if (ratio <= 0.7) return "#22c55e";  // Green — well below average
-  if (ratio <= 1.0) return "#f59e0b";  // Amber — around average
-  if (ratio <= 1.5) return "#f97316";  // Orange — above average
+  if (ratio <= 1.0) return "#eab308";  // Yellow — around/slightly below average
+  if (ratio <= 1.3) return "#f97316";  // Orange — above average
   return "#ef4444";                     // Red — significantly above average
 }
 
-function getComparisonIndicator(count: number, boroughAvg: number | undefined): string {
+function getComparisonIndicator(count: number, boroughAvg: number | undefined, boroughName?: string): string {
   if (!boroughAvg || boroughAvg === 0) return "";
   const ratio = count / boroughAvg;
   const pctDiff = Math.abs(Math.round((ratio - 1) * 100));
-  if (ratio <= 0.7) return `\u25BC ${pctDiff}% below`;
-  if (ratio <= 1.15) return `\u2192 Around avg`;
-  return `\u25B2 ${pctDiff}% above`;
+  const area = boroughName ? ` ${boroughName}` : "";
+  if (ratio <= 0.7) return `\u25BC ${pctDiff}% below${area} avg`;
+  if (ratio <= 1.15) return `\u2192 Around${area} avg`;
+  return `\u25B2 ${pctDiff}% above${area} avg`;
 }
 
 export function CrimeCategoryChart({ crime }: CrimeChartProps) {
@@ -92,7 +92,7 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
         const maxCount = data[0].count;
         const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
         const barColour = getCrimeBarColour(item.count, item.boroughAvg);
-        const comparison = getComparisonIndicator(item.count, item.boroughAvg);
+        const comparison = getComparisonIndicator(item.count, item.boroughAvg, crime.boroughName);
         return (
           <div key={item.rawCategory} className="flex items-center gap-3">
             <span className="text-xs text-muted w-28 text-right shrink-0 truncate">
@@ -129,18 +129,23 @@ export function CrimeTrendChart({ crime }: CrimeChartProps) {
     const parts = item.month.split("-");
     const monthIdx = parseInt(parts[1], 10) - 1;
     return {
-      ...item,
+      month: item.month,
+      // Treat -1 (data unavailable) as null so Recharts shows a gap, not a drop to zero
+      count: item.count >= 0 ? item.count : null,
       label: monthNames[monthIdx] || item.month,
     };
   });
 
-  if (data.length === 0 || data.every((d) => d.count === 0)) {
+  const hasData = data.some((d) => d.count !== null && d.count > 0);
+  if (data.length === 0 || !hasData) {
     return (
       <p className="text-sm text-muted text-center py-4">
         No trend data available
       </p>
     );
   }
+
+  const unavailableMonths = data.filter((d) => d.count === null).length;
 
   return (
     <div className="h-48 w-full">
@@ -164,7 +169,10 @@ export function CrimeTrendChart({ crime }: CrimeChartProps) {
               border: "1px solid #E5E7EB",
               boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
             }}
-            formatter={(value: number | undefined) => [value ?? 0, "Crimes"]}
+            formatter={(value: unknown) => [
+              value === null || value === undefined ? "Data unavailable" : String(value),
+              "Crimes",
+            ]}
           />
           <Line
             type="monotone"
@@ -173,9 +181,15 @@ export function CrimeTrendChart({ crime }: CrimeChartProps) {
             strokeWidth={2}
             dot={{ r: 3, fill: "#6366f1" }}
             activeDot={{ r: 5 }}
+            connectNulls={false}
           />
         </LineChart>
       </ResponsiveContainer>
+      {unavailableMonths > 0 && (
+        <p className="text-[10px] text-muted mt-1">
+          {unavailableMonths} month{unavailableMonths > 1 ? "s" : ""} with no data available (shown as gaps)
+        </p>
+      )}
     </div>
   );
 }

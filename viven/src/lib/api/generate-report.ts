@@ -43,7 +43,7 @@ export async function generateBuyerReport(
     getTransactionHistory(postcode, address),
     getEPCRating(postcode, address),
     getFloodRisk(latitude, longitude),
-    getCrimeData(latitude, longitude),
+    getCrimeData(latitude, longitude, geocode.admin_district),
     getNearbySchools(latitude, longitude),
     getTransportInfo(latitude, longitude),
     getBroadbandData(postcode),
@@ -222,19 +222,35 @@ export async function generateBuyerReport(
 }
 
 export async function generateRentalReport(
-  geocode: GeocodeResult
+  geocode: GeocodeResult,
+  address?: string
 ): Promise<RentalReport> {
   const { latitude, longitude, postcode, lsoa } = geocode;
 
-  // Fan out subset of data sources for free report
-  const [crimeRes, broadbandRes, transportRes, demographicsRes, amenitiesRes] =
-    await Promise.all([
-      getCrimeData(latitude, longitude),
-      getBroadbandData(postcode),
-      getTransportInfo(latitude, longitude),
-      getDemographics(lsoa),
-      getNearbyAmenities(latitude, longitude),
-    ]);
+  // Fan out data sources in parallel — include schools and air quality for parity with buyer report
+  const [
+    crimeRes, broadbandRes, transportRes, demographicsRes,
+    amenitiesRes, schoolsRes, airQualityRes,
+  ] = await Promise.all([
+    getCrimeData(latitude, longitude, geocode.admin_district),
+    getBroadbandData(postcode),
+    getTransportInfo(latitude, longitude),
+    getDemographics(lsoa),
+    getNearbyAmenities(latitude, longitude),
+    getNearbySchools(latitude, longitude),
+    getAirQuality(latitude, longitude),
+  ]);
+
+  // Optionally fetch EPC if address is provided
+  let epcData = null;
+  if (address) {
+    try {
+      const epcRes = await getEPCRating(postcode, address);
+      epcData = epcRes.data;
+    } catch {
+      // Non-critical for rental reports
+    }
+  }
 
   // Calculate safety score (0-100)
   let safetyScore = 75;
@@ -243,33 +259,49 @@ export async function generateRentalReport(
     else if (crimeRes.data.comparisonToAverage === "above") safetyScore = 55;
   }
 
-  // Calculate vibe scores
+  // Use the full vibe score calculator for consistency with buyer report
   const amenities = amenitiesRes.data || [];
-  const parks = amenities.filter((a) => a.category === "park").length;
-  const restaurants = amenities.filter(
-    (a) => a.category === "restaurant"
-  ).length;
-  const shops = amenities.filter(
-    (a) => a.category === "supermarket"
-  ).length;
+  const vibeScores = calculateVibeScores(
+    amenities,
+    transportRes.data,
+    crimeRes.data,
+    airQualityRes.data,
+  );
 
-  const walkability = Math.min(
-    100,
-    (amenities.length / 30) * 100
-  );
-  const greenSpace = Math.min(100, (parks / 5) * 100);
-  const nightlife = Math.min(100, (restaurants / 10) * 100);
-  const familyFriendliness = Math.min(
-    100,
-    ((parks + shops) / 8) * 100 + safetyScore * 0.3
-  );
+  // Map the 0-10 vibe scores to 0-100 for the rental report display
+  const walkability = vibeScores.walkability * 10;
+  const greenSpace = vibeScores.greenSpace * 10;
+  const nightlife = vibeScores.nightlife * 10;
+  const familyFriendliness = vibeScores.familyFriendly * 10;
   const overall = Math.round(
     (walkability + greenSpace + nightlife + familyFriendliness) / 4
   );
 
+  // Generate rental-specific AI insight (non-blocking)
+  let insights: RentalReport["insights"] = undefined;
+  try {
+    const insightData = {
+      address: address || `${postcode} area`,
+      area: geocode.admin_district,
+      propertyType: "rental",
+      crimeLevel: crimeRes.data?.comparisonToAverage || null,
+      broadbandSpeed: broadbandRes.data?.averageDownload || null,
+      nearestSchools: (schoolsRes.data || []).slice(0, 3),
+      commuteTime: transportRes.data?.commuteToCenter?.[0]?.durationMinutes || null,
+    };
+
+    const areaInsight = await generateRentalInsight(insightData, geocode);
+    if (areaInsight) {
+      insights = { areaOverview: areaInsight };
+    }
+  } catch {
+    // Non-critical
+  }
+
   const report: RentalReport = {
     id: generateId(),
     postcode,
+    address: address || undefined,
     generatedAt: new Date().toISOString(),
     geocode,
     safetyScore: {
@@ -287,7 +319,77 @@ export async function generateRentalReport(
       nightlife: Math.round(nightlife),
       familyFriendliness: Math.round(familyFriendliness),
     },
+    vibeDetails: vibeScores.details ? {
+      walkability: vibeScores.details.walkability,
+      greenSpace: vibeScores.details.greenSpace,
+      nightlife: vibeScores.details.nightlife,
+      familyFriendliness: vibeScores.details.familyFriendly,
+    } : undefined,
+    schools: schoolsRes.data || undefined,
+    airQuality: airQualityRes.data,
+    epc: epcData,
+    insights,
   };
 
   return report;
+}
+
+async function generateRentalInsight(
+  data: {
+    address: string;
+    area: string;
+    propertyType: string;
+    crimeLevel: string | null;
+    broadbandSpeed: number | null;
+    nearestSchools: unknown[];
+    commuteTime: number | null;
+  },
+  geocode: GeocodeResult
+): Promise<string | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    // Fallback template insight
+    const parts: string[] = [];
+    if (data.crimeLevel === "below") {
+      parts.push(`Crime levels in ${data.area} are below average, which is reassuring for renters.`);
+    }
+    if (data.broadbandSpeed && data.broadbandSpeed > 0) {
+      parts.push(`Average broadband speed of ${data.broadbandSpeed} Mbps is ${data.broadbandSpeed >= 100 ? "excellent" : data.broadbandSpeed >= 30 ? "decent" : "modest"}.`);
+    }
+    if (data.commuteTime) {
+      parts.push(`Central London is about ${data.commuteTime} minutes away by public transport.`);
+    }
+    return parts.length > 0 ? parts.join(" ") : null;
+  }
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5-20250514",
+        max_tokens: 300,
+        system: "You are Viven, a UK renting insights assistant. Generate a brief, helpful insight (2-3 sentences) for a renter considering moving to this area. Focus on practical concerns: safety, commute, affordability, local amenities. Tone: honest friend helping you decide.",
+        messages: [{
+          role: "user",
+          content: `Generate an area overview insight for a renter looking at ${geocode.admin_ward}, ${data.area} (${geocode.postcode}).
+Crime: ${data.crimeLevel || "unknown"}, Broadband: ${data.broadbandSpeed || "unknown"} Mbps, Commute: ${data.commuteTime || "unknown"} min to central London.
+Write 2-3 practical sentences.`,
+        }],
+      }),
+    });
+
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const content = json.content?.[0];
+    if (content?.type === "text" && content.text) return content.text;
+    return null;
+  } catch {
+    return null;
+  }
 }

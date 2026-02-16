@@ -163,9 +163,10 @@ export function PostcodeSearch({
           `/report/buyer/generating?postcode=${encodeURIComponent(postcode.trim())}&address=${encodeURIComponent(address)}`
         );
       } else {
-        router.push(
-          `/report/rental/preview?postcode=${encodeURIComponent(postcode.trim())}`
-        );
+        const rentalUrl = address
+          ? `/report/rental/preview?postcode=${encodeURIComponent(postcode.trim())}&address=${encodeURIComponent(address)}`
+          : `/report/rental/preview?postcode=${encodeURIComponent(postcode.trim())}`;
+        router.push(rentalUrl);
       }
     } catch {
       setError("Something went wrong. Please try again.");
@@ -209,19 +210,26 @@ export function PostcodeSearch({
         {/* Address selection (buyer only) */}
         {variant === "buyer" && postcodeValid && (
           <>
-            {manualEntry ? (
-              /* Manual address input */
-              <div className="relative">
-                <Pencil className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="e.g. 10 Downing Street"
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-border bg-white text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  autoFocus
-                />
+            {manualEntry || (!fetchingAddresses && addresses.length === 0) ? (
+              /* Manual address input — shown when user chooses manual or no addresses found */
+              <div>
+                <div className="relative">
+                  <Pencil className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="e.g. 10 Downing Street"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-border bg-white text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    autoFocus={manualEntry}
+                  />
+                </div>
+                {!manualEntry && !fetchingAddresses && addresses.length === 0 && (
+                  <p className="text-xs text-muted mt-1.5">
+                    Enter the property address above, or just click &quot;Get Free Report&quot; to search by postcode only.
+                  </p>
+                )}
               </div>
             ) : (
               /* Address dropdown */
@@ -236,13 +244,9 @@ export function PostcodeSearch({
                     <span className="text-foreground">{address}</span>
                   ) : fetchingAddresses ? (
                     <span className="text-muted">Finding addresses...</span>
-                  ) : addresses.length > 0 ? (
-                    <span className="text-muted">
-                      Select address ({addresses.length} found)
-                    </span>
                   ) : (
                     <span className="text-muted">
-                      No addresses found — try manual entry
+                      Select address ({addresses.length} found)
                     </span>
                   )}
                 </button>
@@ -258,8 +262,7 @@ export function PostcodeSearch({
                       <>
                         <div className="p-2 border-b border-border">
                           <p className="text-xs text-muted px-2">
-                            {addresses.length} addresses found (from Land
-                            Registry)
+                            {addresses.length} addresses found
                           </p>
                         </div>
                         {addresses.map((addr, i) => (

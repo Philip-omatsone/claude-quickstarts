@@ -18,18 +18,18 @@ import {
 
 const generalGuides = [
   { icon: Shield, title: "Understanding Your Deposit", slug: "deposits", desc: "Deposit protection schemes and your rights" },
-  { icon: ScrollText, title: "Tenancy Contracts Explained", slug: "contracts", desc: "ASTs, break clauses, and what to check" },
+  { icon: ScrollText, title: "Tenancy Contracts Explained", slug: "tenancy-agreements", desc: "ASTs, break clauses, and what to check" },
   { icon: Wallet, title: "Managing Bills", slug: "bills", desc: "Council tax, utilities, and budgeting tips" },
   { icon: Wrench, title: "Repairs & Maintenance", slug: "repairs", desc: "Your rights and landlord responsibilities" },
-  { icon: Truck, title: "Moving Out Guide", slug: "moving-out", desc: "Notice periods, inventory, and deposit return" },
-  { icon: FileText, title: "Renting Rights", slug: "rights", desc: "Know your legal rights as a tenant" },
+  { icon: Truck, title: "Moving Out Guide", slug: "end-of-tenancy", desc: "Notice periods, inventory, and deposit return" },
+  { icon: FileText, title: "Renting Rights", slug: "eviction", desc: "Know your legal rights as a tenant" },
 ];
 
 const freeTools = [
-  { icon: Calculator, title: "Cost Calculator", slug: "cost-calculator", desc: "Calculate total monthly renting costs" },
-  { icon: Coins, title: "Bill Splitter", slug: "bill-splitter", desc: "Fair bill splitting for housemates" },
-  { icon: ClipboardCheck, title: "Moving Checklist", slug: "moving-checklist", desc: "Everything you need before moving in" },
-  { icon: Mail, title: "Email Templates", slug: "email-templates", desc: "Ready-made emails for landlords and agents" },
+  { icon: Calculator, title: "Cost Calculator", href: "/renters/calculators/bills-estimator", desc: "Calculate total monthly renting costs" },
+  { icon: Coins, title: "Bill Splitter", href: "/renters/calculators/rent-split", desc: "Fair bill splitting for housemates" },
+  { icon: ClipboardCheck, title: "Moving Checklist", href: "/renters/checklists/moving-in", desc: "Everything you need before moving in" },
+  { icon: Mail, title: "Email Templates", href: "/renters/templates", desc: "Ready-made emails for landlords and agents" },
 ];
 
 export default function RentersGuidesPage() {
@@ -51,7 +51,7 @@ export default function RentersGuidesPage() {
           {generalGuides.map((guide) => (
             <Link
               key={guide.slug}
-              href={`/guides/renters/${guide.slug}`}
+              href={`/renters/guides/${guide.slug}`}
               className="bg-white rounded-2xl border border-border p-5 hover:shadow-md transition-all group"
             >
               <IconCircle icon={guide.icon} size="md" />
@@ -75,8 +75,8 @@ export default function RentersGuidesPage() {
         <div className="grid sm:grid-cols-2 gap-4">
           {freeTools.map((tool) => (
             <Link
-              key={tool.slug}
-              href={`/guides/renters/tools/${tool.slug}`}
+              key={tool.href}
+              href={tool.href}
               className="bg-primary-light rounded-2xl border border-green-200 p-5 hover:shadow-md transition-all group"
             >
               <IconCircle icon={tool.icon} size="md" />

@@ -1,5 +1,7 @@
 "use client";
 
+import { VibeScoreDetail } from "@/lib/api/types";
+
 interface VibeScoreProps {
   scores: {
     overall: number;
@@ -8,9 +10,23 @@ interface VibeScoreProps {
     nightlife: number;
     familyFriendliness: number;
   };
+  details?: {
+    walkability?: VibeScoreDetail;
+    greenSpace?: VibeScoreDetail;
+    nightlife?: VibeScoreDetail;
+    familyFriendliness?: VibeScoreDetail;
+  };
 }
 
-function ScoreBar({ label, score }: { label: string; score: number }) {
+function ScoreBar({
+  label,
+  score,
+  detail,
+}: {
+  label: string;
+  score: number;
+  detail?: VibeScoreDetail;
+}) {
   const getColor = (s: number) => {
     if (s >= 70) return "bg-primary";
     if (s >= 40) return "bg-amber-400";
@@ -29,11 +45,16 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
           style={{ width: `${score}%` }}
         />
       </div>
+      {detail && detail.dataPoints.length > 0 && (
+        <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
+          Based on: {detail.dataPoints.join(" \u00B7 ")}
+        </p>
+      )}
     </div>
   );
 }
 
-export function VibeScore({ scores }: VibeScoreProps) {
+export function VibeScore({ scores, details }: VibeScoreProps) {
   return (
     <div>
       {/* Overall Score */}
@@ -57,10 +78,26 @@ export function VibeScore({ scores }: VibeScoreProps) {
 
       {/* Individual scores */}
       <div className="space-y-4">
-        <ScoreBar label="Walkability" score={scores.walkability} />
-        <ScoreBar label="Green Space" score={scores.greenSpace} />
-        <ScoreBar label="Nightlife & Dining" score={scores.nightlife} />
-        <ScoreBar label="Family Friendliness" score={scores.familyFriendliness} />
+        <ScoreBar
+          label="Walkability"
+          score={scores.walkability}
+          detail={details?.walkability}
+        />
+        <ScoreBar
+          label="Green Space"
+          score={scores.greenSpace}
+          detail={details?.greenSpace}
+        />
+        <ScoreBar
+          label="Nightlife & Dining"
+          score={scores.nightlife}
+          detail={details?.nightlife}
+        />
+        <ScoreBar
+          label="Family Friendliness"
+          score={scores.familyFriendliness}
+          detail={details?.familyFriendliness}
+        />
       </div>
     </div>
   );

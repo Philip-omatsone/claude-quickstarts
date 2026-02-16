@@ -59,14 +59,14 @@ const resourceTiles = [
     icon: Wrench,
     title: "Free renting tools",
     description: "Cost calculators, bill splitters, checklists, and email templates",
-    href: "/guides/renters/tools",
+    href: "/renters/calculators",
     color: "bg-blue-50 border-blue-100",
   },
   {
     icon: FileText,
     title: "Renting guides",
     description: "Deposits, contracts, bills, repairs, moving out, and more",
-    href: "/guides/renters/guides",
+    href: "/renters/guides",
     color: "bg-purple-50 border-purple-100",
   },
 ];
@@ -165,6 +165,62 @@ export default function RentersPage() {
               </Link>
             </motion.div>
           ))}
+        </div>
+      </section>
+
+      {/* Free Renter Tools */}
+      <section className="max-w-6xl mx-auto px-4 pb-16">
+        <div className="border-t border-border pt-12">
+          <h2 className="font-heading text-2xl md:text-3xl font-bold text-foreground">
+            Free Renter Tools
+          </h2>
+          <p className="text-muted mt-2">
+            Calculators, checklists, and templates to make renting easier.
+          </p>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            {[
+              {
+                icon: "\uD83D\uDCB7",
+                title: "Rent Affordability Calculator",
+                description: "What can you realistically afford?",
+                href: "/renters/calculators/rent-affordability",
+              },
+              {
+                icon: "\uD83D\uDCDD",
+                title: "Viewing Checklist",
+                description: "What to look for and ask",
+                href: "/renters/checklists/viewing",
+              },
+              {
+                icon: "\u2709\uFE0F",
+                title: "Email Templates",
+                description: "Ready-made emails for landlords",
+                href: "/renters/templates",
+              },
+              {
+                icon: "\uD83D\uDD22",
+                title: "Bill Splitter",
+                description: "Fair splits for shared houses",
+                href: "/renters/calculators/rent-split",
+              },
+            ].map((tool) => (
+              <Link
+                key={tool.href}
+                href={tool.href}
+                className="bg-white rounded-xl border border-border p-5 hover:border-primary hover:shadow-sm transition-all group"
+              >
+                <span className="text-2xl">{tool.icon}</span>
+                <h3 className="font-heading font-semibold text-foreground text-sm mt-2">
+                  {tool.title}
+                </h3>
+                <p className="text-xs text-muted mt-1">{tool.description}</p>
+                <span className="text-primary text-xs font-medium mt-2 inline-flex items-center gap-1 group-hover:gap-1.5 transition-all">
+                  Open <ArrowRight className="w-3 h-3" />
+                </span>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
     </div>

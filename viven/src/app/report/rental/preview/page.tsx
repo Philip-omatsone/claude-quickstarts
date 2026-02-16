@@ -8,16 +8,19 @@ function RentalPreviewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const postcode = searchParams.get("postcode") || "";
+  const address = searchParams.get("address") || "";
   const [status, setStatus] = useState("Generating your free report...");
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     const steps = [
-      { msg: "Geocoding postcode...", pct: 15 },
-      { msg: "Checking area safety...", pct: 35 },
-      { msg: "Gathering broadband data...", pct: 50 },
-      { msg: "Finding transport links...", pct: 65 },
-      { msg: "Mapping amenities...", pct: 80 },
+      { msg: "Geocoding postcode...", pct: 10 },
+      { msg: "Checking area safety...", pct: 25 },
+      { msg: "Gathering broadband data...", pct: 40 },
+      { msg: "Finding transport links...", pct: 55 },
+      { msg: "Checking nearby schools...", pct: 65 },
+      { msg: "Mapping amenities...", pct: 75 },
+      { msg: "Checking air quality...", pct: 85 },
       { msg: "Calculating vibe score...", pct: 95 },
     ];
 
@@ -28,12 +31,12 @@ function RentalPreviewContent() {
         setProgress(steps[i].pct);
         i++;
       }
-    }, 600);
+    }, 500);
 
     fetch("/api/report/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postcode, type: "rental" }),
+      body: JSON.stringify({ postcode, address: address || undefined, type: "rental" }),
     })
       .then((r) => r.json())
       .then((report: RentalReport) => {
@@ -56,7 +59,7 @@ function RentalPreviewContent() {
       });
 
     return () => clearInterval(interval);
-  }, [postcode, router]);
+  }, [postcode, address, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
@@ -67,7 +70,7 @@ function RentalPreviewContent() {
           {status}
         </h1>
 
-        <p className="text-muted mt-3">{postcode}</p>
+        <p className="text-muted mt-3">{address ? `${address}, ${postcode}` : postcode}</p>
 
         <div className="mt-8 w-full bg-gray-200 rounded-full h-2">
           <div
@@ -78,8 +81,8 @@ function RentalPreviewContent() {
         <p className="text-sm text-muted mt-2">{progress}%</p>
 
         <p className="text-xs text-muted mt-8">
-          Your free rental report covers safety, broadband, transport,
-          amenities, and neighbourhood vibes.
+          Your free rental report covers safety, schools, broadband, transport,
+          amenities, air quality, and neighbourhood vibes.
         </p>
       </div>
     </div>

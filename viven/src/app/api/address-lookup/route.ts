@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const PPD_API =
   "https://landregistry.data.gov.uk/data/ppi/transaction-record.json";
+const EPC_API = "https://epc.opendatacommunities.org/api/v1";
 
 export async function GET(request: NextRequest) {
   const postcode = request.nextUrl.searchParams.get("postcode");
@@ -13,9 +14,67 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const cleanPostcode = postcode.trim().toUpperCase();
+
+  try {
+    // Fan out both Land Registry and EPC lookups in parallel for better coverage
+    const [landRegistryAddresses, epcAddresses] = await Promise.all([
+      fetchLandRegistryAddresses(cleanPostcode),
+      fetchEPCAddresses(cleanPostcode),
+    ]);
+
+    // Merge and deduplicate addresses from both sources
+    const seen = new Set<string>();
+    const addresses: { address: string; paon: string; street: string; town: string; source: string }[] = [];
+
+    // Add Land Registry results first (higher quality address format)
+    for (const addr of landRegistryAddresses) {
+      const key = addr.address.toLowerCase().replace(/[,\s]+/g, " ").trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        addresses.push({ ...addr, source: "land-registry" });
+      }
+    }
+
+    // Add EPC results that aren't already covered
+    for (const addr of epcAddresses) {
+      const key = addr.address.toLowerCase().replace(/[,\s]+/g, " ").trim();
+      // Check for approximate matches (house number matching)
+      const houseNum = addr.paon.match(/^\d+/)?.[0];
+      const alreadyCovered = houseNum
+        ? addresses.some((a) => {
+            const existingNum = a.paon.match(/^\d+/)?.[0];
+            return existingNum === houseNum && a.street.toLowerCase() === addr.street.toLowerCase();
+          })
+        : seen.has(key);
+
+      if (!alreadyCovered && !seen.has(key)) {
+        seen.add(key);
+        addresses.push({ ...addr, source: "epc" });
+      }
+    }
+
+    // Sort naturally by house number, then alphabetically
+    addresses.sort((a, b) => {
+      const numA = parseInt(a.paon.match(/^\d+/)?.[0] || "0");
+      const numB = parseInt(b.paon.match(/^\d+/)?.[0] || "0");
+      if (numA !== numB) return numA - numB;
+      return a.address.localeCompare(b.address);
+    });
+
+    return NextResponse.json({ addresses });
+  } catch (error) {
+    console.error("Address lookup error:", error);
+    return NextResponse.json({ addresses: [] });
+  }
+}
+
+async function fetchLandRegistryAddresses(
+  postcode: string
+): Promise<{ address: string; paon: string; street: string; town: string }[]> {
   try {
     const params = new URLSearchParams({
-      "propertyAddress.postcode": postcode.trim().toUpperCase(),
+      "propertyAddress.postcode": postcode,
       _pageSize: "100",
       _sort: "-transactionDate",
     });
@@ -24,14 +83,11 @@ export async function GET(request: NextRequest) {
       next: { revalidate: 86400 },
     });
 
-    if (!res.ok) {
-      throw new Error(`Land Registry API returned ${res.status}`);
-    }
+    if (!res.ok) return [];
 
     const json = await res.json();
     const items = json.result?.items || [];
 
-    // Extract unique addresses
     const seen = new Set<string>();
     const addresses: { address: string; paon: string; street: string; town: string }[] = [];
 
@@ -52,12 +108,71 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Sort alphabetically
-    addresses.sort((a, b) => a.address.localeCompare(b.address));
+    return addresses;
+  } catch {
+    return [];
+  }
+}
 
-    return NextResponse.json({ addresses });
-  } catch (error) {
-    console.error("Address lookup error:", error);
-    return NextResponse.json({ addresses: [] });
+async function fetchEPCAddresses(
+  postcode: string
+): Promise<{ address: string; paon: string; street: string; town: string }[]> {
+  try {
+    const apiKey = process.env.EPC_API_KEY || "";
+    if (!apiKey) return [];
+
+    const authHeader = apiKey.includes(":")
+      ? `Basic ${Buffer.from(apiKey).toString("base64")}`
+      : `Basic ${Buffer.from(apiKey + ":").toString("base64")}`;
+
+    const params = new URLSearchParams({
+      postcode: postcode.replace(/\s/g, ""),
+      size: "100",
+    });
+
+    const res = await fetch(`${EPC_API}/domestic/search?${params}`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: authHeader,
+      },
+      next: { revalidate: 86400 },
+    });
+
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    const rows = json.rows || [];
+
+    const seen = new Set<string>();
+    const addresses: { address: string; paon: string; street: string; town: string }[] = [];
+
+    for (const row of rows) {
+      const rawAddr = row.address || "";
+      if (!rawAddr) continue;
+
+      const key = rawAddr.toLowerCase().replace(/[,\s]+/g, " ").trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      // Parse EPC address format: "11, RYEDALE, LONDON, SE22 0QW" -> parts
+      const parts = rawAddr.split(",").map((p: string) => p.trim()).filter(Boolean);
+      // Remove the postcode part if present at the end
+      const filtered = parts.filter(
+        (p: string) => !/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(p)
+      );
+
+      const paon = filtered[0] || "";
+      const street = filtered[1] || "";
+      const town = filtered[2] || "";
+      const display = filtered.join(", ");
+
+      if (display) {
+        addresses.push({ address: display, paon, street, town });
+      }
+    }
+
+    return addresses;
+  } catch {
+    return [];
   }
 }

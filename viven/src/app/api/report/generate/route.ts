@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       const report = await generateBuyerReport(geocodeResult.data, address);
       return NextResponse.json(report);
     } else {
-      const report = await generateRentalReport(geocodeResult.data);
+      const report = await generateRentalReport(geocodeResult.data, address);
       return NextResponse.json(report);
     }
   } catch (error) {

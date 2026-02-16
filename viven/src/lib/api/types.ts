@@ -277,6 +277,7 @@ export interface BuyerReport {
 export interface RentalReport {
   id: string;
   postcode: string;
+  address?: string;
   generatedAt: string;
   geocode: GeocodeResult;
   safetyScore: {
@@ -293,6 +294,18 @@ export interface RentalReport {
     greenSpace: number;
     nightlife: number;
     familyFriendliness: number;
+  };
+  vibeDetails?: {
+    walkability: VibeScoreDetail;
+    greenSpace: VibeScoreDetail;
+    nightlife: VibeScoreDetail;
+    familyFriendliness: VibeScoreDetail;
+  };
+  schools?: SchoolInfo[];
+  airQuality?: AirQualityData | null;
+  epc?: EPCRating | null;
+  insights?: {
+    areaOverview?: string;
   };
 }
 

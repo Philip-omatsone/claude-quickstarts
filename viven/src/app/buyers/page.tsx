@@ -150,6 +150,62 @@ export default function BuyersPage() {
           ))}
         </div>
       </section>
+
+      {/* Free Buyer Tools */}
+      <section className="max-w-6xl mx-auto px-4 pb-16">
+        <div className="border-t border-border pt-12">
+          <h2 className="font-heading text-2xl md:text-3xl font-bold text-foreground">
+            Free Buyer Tools
+          </h2>
+          <p className="text-muted mt-2">
+            Calculators, checklists, and resources to help you buy with confidence.
+          </p>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+            {[
+              {
+                icon: "\uD83E\uDDEE",
+                title: "Stamp Duty Calculator",
+                description: "See exactly what you'll pay",
+                href: "/buyers/calculators/stamp-duty",
+              },
+              {
+                icon: "\u2705",
+                title: "Buyer Checklist",
+                description: "Track every step of the process",
+                href: "/buyers/checklists/buying",
+              },
+              {
+                icon: "\uD83D\uDCD6",
+                title: "A-Z Glossary",
+                description: "Property jargon explained",
+                href: "/buyers/guides/a-z",
+              },
+              {
+                icon: "\uD83D\uDCCA",
+                title: "Market Data",
+                description: "Latest prices and trends",
+                href: "/buyers/market",
+              },
+            ].map((tool) => (
+              <Link
+                key={tool.href}
+                href={tool.href}
+                className="bg-white rounded-xl border border-border p-5 hover:border-primary hover:shadow-sm transition-all group"
+              >
+                <span className="text-2xl">{tool.icon}</span>
+                <h3 className="font-heading font-semibold text-foreground text-sm mt-2">
+                  {tool.title}
+                </h3>
+                <p className="text-xs text-muted mt-1">{tool.description}</p>
+                <span className="text-primary text-xs font-medium mt-2 inline-flex items-center gap-1 group-hover:gap-1.5 transition-all">
+                  Open <ArrowRight className="w-3 h-3" />
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
