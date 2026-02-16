@@ -1,11 +1,13 @@
-import { TransportInfo, DataSourceResponse } from "../types";
+import { TransportInfo, DataSourceResponse, UserPreferences } from "../types";
+import { calculateCommute, calculateDefaultCommutes } from "./commute";
 
 // TfL Unified API (free, London-specific)
 const BASE_URL = "https://api.tfl.gov.uk";
 
 export async function getTransportInfo(
   latitude: number,
-  longitude: number
+  longitude: number,
+  preferences?: UserPreferences
 ): Promise<DataSourceResponse<TransportInfo>> {
   try {
     // Get nearby stop points
@@ -61,10 +63,47 @@ export async function getTransportInfo(
       }
     }
 
+    // Calculate personalised commute if user provided work location
+    let personalCommute = undefined;
+    let additionalCommutes = undefined;
+
+    if (preferences?.workPostcode || preferences?.workLocationName) {
+      const destination = preferences.workPostcode || preferences.workLocationName || "";
+      const mode = preferences.transportMode || "transit";
+      try {
+        personalCommute = await calculateCommute(latitude, longitude, destination, mode) ?? undefined;
+      } catch {
+        // Non-critical
+      }
+    }
+
+    // Calculate additional destination commutes
+    if (preferences?.additionalDestinations?.length) {
+      const mode = preferences.transportMode || "transit";
+      const additionalPromises = preferences.additionalDestinations.map((dest) =>
+        calculateCommute(latitude, longitude, dest, mode).catch(() => null)
+      );
+      const results = await Promise.all(additionalPromises);
+      additionalCommutes = results.filter((r): r is NonNullable<typeof r> => r !== null);
+      if (additionalCommutes.length === 0) additionalCommutes = undefined;
+    }
+
+    // Calculate default commute times (fastest 3 London stations)
+    let defaultCommutes = undefined;
+    try {
+      const defaults = await calculateDefaultCommutes(latitude, longitude);
+      if (defaults.length > 0) defaultCommutes = defaults;
+    } catch {
+      // Non-critical
+    }
+
     return {
       data: {
         nearestStations,
         commuteToCenter,
+        personalCommute,
+        additionalCommutes,
+        defaultCommutes,
       },
       cached: false,
       fetchedAt: new Date().toISOString(),

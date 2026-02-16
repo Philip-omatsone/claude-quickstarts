@@ -66,6 +66,13 @@ export interface ValuationResult {
   compBasedValue: number | null;
   methodology: string;
   confidence: "High" | "Medium" | "Low";
+  lastSalePrice?: number;
+  lastSaleDate?: string;
+  region?: string;
+  propertyType?: string;
+  medianPsf?: number;
+  compCount?: number;
+  floorAreaSqft?: number;
 }
 
 // EPC types
@@ -104,11 +111,13 @@ export type RiskLevel = "very_low" | "low" | "medium" | "high";
 export interface CrimeData {
   totalCrimes: number;
   crimesByCategory: Record<string, number>;
+  crimeRates?: Record<string, { rate: number; count: number }>;
   monthlyTrend: { month: string; count: number }[];
   comparisonToAverage: "below" | "average" | "above";
   boroughAverages?: Record<string, number>;
   boroughName?: string;
   dateRange?: string;
+  lsoaPopulation?: number;
 }
 
 // School data
@@ -120,6 +129,17 @@ export interface SchoolInfo {
   numberOfPupils: number;
   address: string;
   urn: string;
+}
+
+// Commute result for personalised commute
+export interface CommuteResult {
+  destination: string;
+  destinationLabel: string;
+  durationMinutes: number;
+  mode: string;
+  summary?: string;
+  fromStation?: string;
+  steps?: string[];
 }
 
 // Transport data
@@ -135,6 +155,17 @@ export interface TransportInfo {
     durationMinutes: number;
     mode: string;
   }[];
+  personalCommute?: CommuteResult;
+  additionalCommutes?: CommuteResult[];
+  defaultCommutes?: CommuteResult[];
+}
+
+// User preferences for report personalisation
+export interface UserPreferences {
+  workPostcode?: string;
+  workLocationName?: string;
+  transportMode?: "transit" | "driving" | "cycling";
+  additionalDestinations?: string[];
 }
 
 // Broadband data

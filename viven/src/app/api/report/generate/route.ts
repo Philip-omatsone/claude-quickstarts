@@ -8,7 +8,7 @@ import {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { postcode, address, type } = body;
+    const { postcode, address, type, preferences } = body;
 
     if (!postcode) {
       return NextResponse.json(
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // Generate the appropriate report
     if (type === "buyer") {
-      const report = await generateBuyerReport(geocodeResult.data, address);
+      const report = await generateBuyerReport(geocodeResult.data, address, preferences);
       return NextResponse.json(report);
     } else {
       const report = await generateRentalReport(geocodeResult.data, address);

@@ -8,39 +8,62 @@ export async function getEPCRating(
   address?: string
 ): Promise<DataSourceResponse<EPCRating>> {
   try {
-    // Attempt 1: Full address match
+    const cleanPostcode = postcode.replace(/\s+/g, "").toUpperCase();
+    // Some EPC entries require the postcode with a space (e.g. "SE22 0NL")
+    const spacedPostcode = cleanPostcode.replace(/^(.+?)(\d[A-Z]{2})$/, "$1 $2");
+
+    // Attempt 1: Full address match (no-space postcode)
     if (address) {
-      const result = await queryEPC(postcode, address);
+      const result = await queryEPC(cleanPostcode, address);
       if (result) return wrapResult(result);
     }
 
-    // Attempt 2: House number/name only (most common match)
+    // Attempt 2: House number/name only
     if (address) {
       const houseNumber = address.match(/^\d+[A-Za-z]?/)?.[0];
       if (houseNumber) {
-        const result = await queryEPC(postcode, houseNumber);
+        const result = await queryEPC(cleanPostcode, houseNumber);
         if (result) return wrapResult(result);
       }
     }
 
-    // Attempt 3: All EPCs for postcode, find best match
-    const allRows = await queryEPCRaw(postcode, "");
-    if (allRows && allRows.length > 0) {
+    // Attempt 3: Try with spaced postcode + house number
+    if (address) {
+      const houseNumber = address.match(/^\d+[A-Za-z]?/)?.[0];
+      if (houseNumber && spacedPostcode !== cleanPostcode) {
+        const result = await queryEPC(spacedPostcode, houseNumber);
+        if (result) return wrapResult(result);
+      }
+    }
+
+    // Attempt 4: Building name extraction (e.g., "Flat 3, Ryedale House" -> "Ryedale House")
+    if (address) {
+      const buildingName = address
+        .replace(/^(flat|apt|apartment|unit)\s+\d+[a-z]?,?\s*/i, "")
+        .trim();
+      if (buildingName !== address && buildingName.length > 2) {
+        const result = await queryEPC(cleanPostcode, buildingName);
+        if (result) return wrapResult(result);
+      }
+    }
+
+    // Attempt 5: All EPCs for postcode, fuzzy match
+    const allRows = await queryEPCRaw(cleanPostcode, "");
+    // Also try with spaced postcode if no results
+    const rows = allRows ?? await queryEPCRaw(spacedPostcode, "");
+
+    if (rows && rows.length > 0) {
       if (address) {
-        // Try to find a match by checking if the EPC address contains our address parts
-        const normalised = address.toUpperCase().replace(/[,]/g, "").trim();
-        const houseRef = normalised.match(/^\d+[A-Za-z]?/)?.[0];
-        const match = allRows.find((row: Record<string, string>) => {
-          const epcAddr = (row.address || "").toUpperCase();
-          if (houseRef && epcAddr.includes(houseRef)) return true;
-          // Check if first significant word appears in EPC address
-          const words = normalised.split(/\s+/).filter((w: string) => w.length > 2);
-          return words.length > 0 && words.some((w: string) => epcAddr.includes(w));
-        });
+        const match = fuzzyMatchAddress(rows, address);
         if (match) return wrapResult(parseEPCRow(match));
       }
       // Fallback: return the most recent EPC for the postcode
-      return wrapResult(parseEPCRow(allRows[0]));
+      const sorted = [...rows].sort(
+        (a, b) =>
+          new Date(b["lodgement-date"] || b["inspection-date"] || "").getTime() -
+          new Date(a["lodgement-date"] || a["inspection-date"] || "").getTime()
+      );
+      return wrapResult(parseEPCRow(sorted[0]));
     }
 
     return {
@@ -91,6 +114,15 @@ async function queryEPC(
 ): Promise<EPCRating | null> {
   const rows = await queryEPCRaw(postcode, address);
   if (rows && rows.length > 0) {
+    // If multiple results, return the most recent
+    if (rows.length > 1) {
+      const sorted = [...rows].sort(
+        (a, b) =>
+          new Date(b["lodgement-date"] || b["inspection-date"] || "").getTime() -
+          new Date(a["lodgement-date"] || a["inspection-date"] || "").getTime()
+      );
+      return parseEPCRow(sorted[0]);
+    }
     return parseEPCRow(rows[0]);
   }
   return null;
@@ -101,30 +133,84 @@ async function queryEPCRaw(
   address: string
 ): Promise<Record<string, string>[] | null> {
   const params = new URLSearchParams({
-    postcode: postcode.replace(/\s/g, "").toUpperCase(),
-    size: "25",
+    postcode: postcode,
+    size: "100",
   });
   if (address) {
     params.set("address", address);
   }
 
   const apiKey = process.env.EPC_API_KEY || "";
+  if (!apiKey) {
+    return null;
+  }
+
   // EPC API uses Basic auth: base64(apikey:) — note the trailing colon
   const authHeader = apiKey.includes(":")
     ? `Basic ${Buffer.from(apiKey).toString("base64")}`
     : `Basic ${Buffer.from(apiKey + ":").toString("base64")}`;
 
-  const res = await fetch(`${BASE_URL}/domestic/search?${params}`, {
-    headers: {
-      Accept: "application/json",
-      Authorization: authHeader,
-    },
-    next: { revalidate: 604800 }, // Cache for 7 days
-  });
+  try {
+    const res = await fetch(`${BASE_URL}/domestic/search?${params}`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: authHeader,
+      },
+      signal: AbortSignal.timeout(8000),
+      next: { revalidate: 604800 }, // Cache for 7 days
+    });
 
-  if (!res.ok) return null;
-  const json = await res.json();
-  return json.rows?.length ? json.rows : null;
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        console.warn(`EPC API auth error: ${res.status} — API key may be invalid or revoked`);
+      }
+      return null;
+    }
+    const json = await res.json();
+    return json.rows?.length ? json.rows : null;
+  } catch (err) {
+    console.warn("EPC API fetch error:", err);
+    return null;
+  }
+}
+
+function fuzzyMatchAddress(
+  rows: Record<string, string>[],
+  targetAddress: string
+): Record<string, string> | null {
+  const target = targetAddress.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  // Try exact-ish match first
+  for (const row of rows) {
+    const rowAddr = (row.address || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (rowAddr.includes(target) || target.includes(rowAddr)) {
+      return row;
+    }
+  }
+
+  // Try house number match
+  const targetNum = targetAddress.match(/^\d+[A-Za-z]?/)?.[0];
+  if (targetNum) {
+    for (const row of rows) {
+      const rowNum = (row.address || "").match(/^\d+[A-Za-z]?/)?.[0];
+      if (rowNum === targetNum) return row;
+    }
+  }
+
+  // Try matching significant words (skip short words like "the", "and")
+  const words = targetAddress
+    .toUpperCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !["FLAT", "ROAD", "STREET", "LANE", "AVENUE", "DRIVE", "CLOSE", "COURT"].includes(w));
+  if (words.length > 0) {
+    for (const row of rows) {
+      const rowAddr = (row.address || "").toUpperCase();
+      const matchCount = words.filter((w) => rowAddr.includes(w)).length;
+      if (matchCount >= Math.ceil(words.length * 0.6)) return row;
+    }
+  }
+
+  return null;
 }
 
 function parseEPCRow(row: Record<string, string>): EPCRating {

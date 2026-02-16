@@ -17,21 +17,21 @@ interface CrimeChartProps {
 
 // Readable short labels for Police UK crime categories
 const CATEGORY_LABELS: Record<string, string> = {
-  "anti-social-behaviour": "Anti-Social",
-  "bicycle-theft": "Bike Theft",
+  "anti-social-behaviour": "Anti-Social Behaviour",
+  "bicycle-theft": "Bicycle Theft",
   burglary: "Burglary",
-  "criminal-damage-arson": "Damage/Arson",
+  "criminal-damage-arson": "Criminal Damage/Arson",
   drugs: "Drugs",
   "other-crime": "Other Crime",
   "other-theft": "Other Theft",
-  "possession-of-weapons": "Weapons",
+  "possession-of-weapons": "Weapons Possession",
   "public-order": "Public Order",
   robbery: "Robbery",
   shoplifting: "Shoplifting",
-  "theft-from-the-person": "Theft (Person)",
+  "theft-from-the-person": "Theft from Person",
   "vehicle-crime": "Vehicle Crime",
   "violent-crime": "Violence",
-  "violence-and-sexual-offences": "Violence/Sexual",
+  "violence-and-sexual-offences": "Violence & Sexual Offences",
 };
 
 function formatCategory(raw: string): string {
@@ -46,28 +46,39 @@ function getCrimeBarColour(count: number, boroughAvg: number | undefined): strin
     return "#6B7280";
   }
   const ratio = count / boroughAvg;
-  if (ratio <= 0.7) return "#22c55e";  // Green — well below average
-  if (ratio <= 1.0) return "#eab308";  // Yellow — around/slightly below average
-  if (ratio <= 1.3) return "#f97316";  // Orange — above average
-  return "#ef4444";                     // Red — significantly above average
+  if (ratio <= 0.75) return "#22c55e";  // Green — well below average
+  if (ratio <= 1.1)  return "#9ca3af";  // Gray — around average
+  if (ratio <= 1.3)  return "#f59e0b";  // Amber — above average
+  return "#ef4444";                      // Red — significantly above average
 }
 
-function getComparisonIndicator(count: number, boroughAvg: number | undefined, boroughName?: string): string {
+function getComparisonDot(count: number, boroughAvg: number | undefined): string {
+  if (!boroughAvg || boroughAvg === 0) return "";
+  const ratio = count / boroughAvg;
+  if (ratio <= 0.75) return "\uD83D\uDFE2";  // green circle
+  if (ratio <= 1.1)  return "\u26AA";          // white circle
+  if (ratio <= 1.3)  return "\uD83D\uDFE1";  // yellow circle
+  return "\uD83D\uDD34";                       // red circle
+}
+
+function getComparisonText(count: number, boroughAvg: number | undefined): string {
   if (!boroughAvg || boroughAvg === 0) return "";
   const ratio = count / boroughAvg;
   const pctDiff = Math.abs(Math.round((ratio - 1) * 100));
-  const area = boroughName ? ` ${boroughName}` : "";
-  if (ratio <= 0.7) return `\u25BC ${pctDiff}% below${area} avg`;
-  if (ratio <= 1.15) return `\u2192 Around${area} avg`;
-  return `\u25B2 ${pctDiff}% above${area} avg`;
+  if (ratio <= 0.75) return `\u25BC ${pctDiff}% below`;
+  if (ratio <= 1.1)  return "\u2192 Around avg";
+  return `\u25B2 ${pctDiff}% above`;
 }
 
 export function CrimeCategoryChart({ crime }: CrimeChartProps) {
+  const hasRates = crime.crimeRates && Object.keys(crime.crimeRates).length > 0;
+
   const data = Object.entries(crime.crimesByCategory)
     .map(([category, count]) => ({
       category: formatCategory(category),
       rawCategory: category,
       count,
+      rate: crime.crimeRates?.[category]?.rate ?? null,
       boroughAvg: crime.boroughAverages?.[category],
     }))
     .sort((a, b) => b.count - a.count)
@@ -85,17 +96,23 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted mb-3">
-        Incidents in most recent month{crime.boroughName ? ` | Compared to ${crime.boroughName} average` : ""}
-      </p>
+      {/* Header row */}
+      <div className="flex items-center gap-3 text-[10px] text-muted uppercase tracking-wider mb-2">
+        <span className="w-36 text-right shrink-0">Category</span>
+        <span className="flex-1" />
+        {hasRates && <span className="w-16 text-right shrink-0">Rate/1k</span>}
+        {hasBoroughData && <span className="w-28 shrink-0 text-right">vs {crime.boroughName || "Borough"}</span>}
+      </div>
+
       {data.map((item) => {
         const maxCount = data[0].count;
         const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
         const barColour = getCrimeBarColour(item.count, item.boroughAvg);
-        const comparison = getComparisonIndicator(item.count, item.boroughAvg, crime.boroughName);
+        const dot = getComparisonDot(item.count, item.boroughAvg);
+        const comparison = getComparisonText(item.count, item.boroughAvg);
         return (
           <div key={item.rawCategory} className="flex items-center gap-3">
-            <span className="text-xs text-muted w-28 text-right shrink-0 truncate">
+            <span className="text-xs text-muted w-36 text-right shrink-0 truncate">
               {item.category}
             </span>
             <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
@@ -107,17 +124,33 @@ export function CrimeCategoryChart({ crime }: CrimeChartProps) {
                 }}
               />
             </div>
-            <span className="text-xs font-medium text-foreground w-8 text-right shrink-0">
-              {item.count}
-            </span>
+            {hasRates && item.rate !== null ? (
+              <span className="text-xs font-semibold text-foreground w-16 text-right shrink-0">
+                {item.rate}
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-foreground w-16 text-right shrink-0">
+                {item.count}
+              </span>
+            )}
             {hasBoroughData && (
-              <span className="text-[10px] text-muted w-24 shrink-0 truncate">
-                {comparison}
+              <span className="text-[10px] text-muted w-28 shrink-0 text-right truncate">
+                {dot} {comparison}
               </span>
             )}
           </div>
         );
       })}
+
+      {/* Footer with units */}
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-100 mt-3">
+        <p className="text-[10px] text-gray-400">
+          {hasRates
+            ? "Incidents per 1,000 residents/year"
+            : "Incident counts in most recent month"}
+          {crime.boroughName ? ` | Comparison baseline: ${crime.boroughName}` : ""}
+        </p>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { BuyerReport, RentalReport, GeocodeResult } from "./types";
+import { BuyerReport, RentalReport, GeocodeResult, UserPreferences } from "./types";
 import { calculateVivenVerdict, calculateVibeScores } from "./scoring";
 import { getTransactionHistory } from "./sources/land-registry";
 import { getEPCRating, searchEPCByAddress } from "./sources/epc";
@@ -21,7 +21,8 @@ function generateId(): string {
 
 export async function generateBuyerReport(
   geocode: GeocodeResult,
-  address?: string
+  address?: string,
+  preferences?: UserPreferences
 ): Promise<BuyerReport> {
   const { latitude, longitude, postcode, lsoa } = geocode;
 
@@ -45,7 +46,7 @@ export async function generateBuyerReport(
     getFloodRisk(latitude, longitude),
     getCrimeData(latitude, longitude, geocode.admin_district),
     getNearbySchools(latitude, longitude),
-    getTransportInfo(latitude, longitude),
+    getTransportInfo(latitude, longitude, preferences),
     getBroadbandData(postcode),
     getDemographics(lsoa),
     getGeologyData(latitude, longitude),

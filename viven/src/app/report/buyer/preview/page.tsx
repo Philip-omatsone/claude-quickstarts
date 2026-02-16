@@ -12,7 +12,8 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { IconCircle } from "@/components/IconCircle";
-import { GeocodeResult } from "@/lib/api/types";
+import { GeocodeResult, UserPreferences } from "@/lib/api/types";
+import { ReportPreferences } from "@/components/report/ReportPreferences";
 
 function PreviewContent() {
   const searchParams = useSearchParams();
@@ -22,6 +23,7 @@ function PreviewContent() {
   const [geocode, setGeocode] = useState<GeocodeResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
 
   useEffect(() => {
     if (postcode) {
@@ -36,6 +38,17 @@ function PreviewContent() {
   }, [postcode]);
 
   const handleCheckout = async () => {
+    // Show preferences form before checkout
+    setShowPreferences(true);
+  };
+
+  const handlePreferencesSubmit = async (prefs: UserPreferences) => {
+    // Store preferences for use during report generation
+    if (Object.keys(prefs).length > 0) {
+      sessionStorage.setItem("report_preferences", JSON.stringify(prefs));
+    }
+
+    setShowPreferences(false);
     setCheckoutLoading(true);
     try {
       const res = await fetch("/api/checkout", {
@@ -82,99 +95,110 @@ function PreviewContent() {
         </div>
       </div>
 
+      {/* Preferences form (shown after clicking buy) */}
+      {showPreferences && (
+        <div className="mb-6">
+          <ReportPreferences onSubmit={handlePreferencesSubmit} />
+        </div>
+      )}
+
       {/* Preview sections (blurred/locked) */}
-      <div className="space-y-4">
-        {[
-          {
-            icon: TrendingUp,
-            title: "Price History & Valuation",
-            desc: "Transaction history, price trends, and estimated value range",
-          },
-          {
-            icon: ShieldCheck,
-            title: "Risk Assessment",
-            desc: "Flood risk, subsidence, radon, and planning applications",
-          },
-          {
-            icon: MapPin,
-            title: "Area & Neighbourhood",
-            desc: "Crime stats, schools, transport, demographics, broadband",
-          },
-          {
-            icon: BarChart3,
-            title: "Market Context",
-            desc: "Comparable sales, area averages, market trends",
-          },
-          {
-            icon: Zap,
-            title: "Environmental",
-            desc: "Air quality, green space, noise assessment",
-          },
-        ].map((section) => (
-          <div
-            key={section.title}
-            className="bg-white rounded-2xl border border-border p-6 relative overflow-hidden"
-          >
-            <div className="flex items-start gap-3">
-              <IconCircle icon={section.icon} size="md" />
-              <div>
-                <h2 className="font-heading text-lg font-bold text-foreground">
-                  {section.title}
-                </h2>
-                <p className="text-sm text-muted">{section.desc}</p>
-              </div>
-            </div>
+      {!showPreferences && (
+        <>
+          <div className="space-y-4">
+            {[
+              {
+                icon: TrendingUp,
+                title: "Price History & Projected Value",
+                desc: "Transaction history, price trends, and projected value range",
+              },
+              {
+                icon: ShieldCheck,
+                title: "Risk Assessment",
+                desc: "Flood risk, subsidence, radon, and planning applications",
+              },
+              {
+                icon: MapPin,
+                title: "Area & Neighbourhood",
+                desc: "Crime rates, schools, personalised commute, demographics, broadband",
+              },
+              {
+                icon: BarChart3,
+                title: "Market Context",
+                desc: "Comparable sales, area averages, market trends",
+              },
+              {
+                icon: Zap,
+                title: "Environmental",
+                desc: "Air quality, green space, noise assessment",
+              },
+            ].map((section) => (
+              <div
+                key={section.title}
+                className="bg-white rounded-2xl border border-border p-6 relative overflow-hidden"
+              >
+                <div className="flex items-start gap-3">
+                  <IconCircle icon={section.icon} size="md" />
+                  <div>
+                    <h2 className="font-heading text-lg font-bold text-foreground">
+                      {section.title}
+                    </h2>
+                    <p className="text-sm text-muted">{section.desc}</p>
+                  </div>
+                </div>
 
-            {/* Blurred preview content */}
-            <div className="mt-4 filter blur-sm select-none pointer-events-none">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-gray-100 rounded-lg h-20" />
-                <div className="bg-gray-100 rounded-lg h-20" />
-                <div className="bg-gray-100 rounded-lg h-20" />
-              </div>
-              <div className="bg-gray-100 rounded-lg h-32 mt-4" />
-            </div>
+                {/* Blurred preview content */}
+                <div className="mt-4 filter blur-sm select-none pointer-events-none">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-gray-100 rounded-lg h-20" />
+                    <div className="bg-gray-100 rounded-lg h-20" />
+                    <div className="bg-gray-100 rounded-lg h-20" />
+                  </div>
+                  <div className="bg-gray-100 rounded-lg h-32 mt-4" />
+                </div>
 
-            {/* Lock overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-white/90 via-white/50 to-transparent flex items-end justify-center pb-6">
-              <div className="flex items-center gap-2 text-muted text-sm">
-                <Lock className="w-4 h-4" />
-                Unlock with full report
+                {/* Lock overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-white/90 via-white/50 to-transparent flex items-end justify-center pb-6">
+                  <div className="flex items-center gap-2 text-muted text-sm">
+                    <Lock className="w-4 h-4" />
+                    Unlock with full report
+                  </div>
+                </div>
               </div>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <div className="mt-8 bg-primary rounded-2xl p-8 text-center text-white">
+            <h2 className="font-heading text-2xl font-bold">
+              Unlock the full report
+            </h2>
+            <p className="text-white/80 mt-2 max-w-md mx-auto">
+              Get comprehensive property insights from 15+ data sources.
+              Everything you need to make a confident buying decision.
+            </p>
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={handleCheckout}
+                disabled={checkoutLoading}
+                className="bg-white text-primary px-8 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-60"
+              >
+                {checkoutLoading ? (
+                  <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                ) : (
+                  <>
+                    Get Report for &pound;9.99
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+              <span className="text-white/60 text-sm">
+                Secure checkout with Stripe
+              </span>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* CTA */}
-      <div className="mt-8 bg-primary rounded-2xl p-8 text-center text-white">
-        <h2 className="font-heading text-2xl font-bold">
-          Unlock the full report
-        </h2>
-        <p className="text-white/80 mt-2 max-w-md mx-auto">
-          Get comprehensive property insights from 15+ data sources.
-          Everything you need to make a confident buying decision.
-        </p>
-        <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <button
-            onClick={handleCheckout}
-            disabled={checkoutLoading}
-            className="bg-white text-primary px-8 py-3 rounded-xl font-semibold hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-60"
-          >
-            {checkoutLoading ? (
-              <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-            ) : (
-              <>
-                Get Report for £9.99
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-          <span className="text-white/60 text-sm">
-            Secure checkout with Stripe
-          </span>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }

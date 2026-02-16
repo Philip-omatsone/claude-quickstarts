@@ -33,11 +33,23 @@ function GeneratingContent() {
       }
     }, 800);
 
+    // Retrieve any stored preferences
+    let preferences = undefined;
+    try {
+      const storedPrefs = sessionStorage.getItem("report_preferences");
+      if (storedPrefs) {
+        preferences = JSON.parse(storedPrefs);
+        sessionStorage.removeItem("report_preferences");
+      }
+    } catch {
+      // Non-critical
+    }
+
     // Actually generate the report
     fetch("/api/report/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postcode, address, type: "buyer" }),
+      body: JSON.stringify({ postcode, address, type: "buyer", preferences }),
     })
       .then((r) => r.json())
       .then((report: BuyerReport) => {

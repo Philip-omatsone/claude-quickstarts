@@ -98,22 +98,41 @@ export async function getCrimeData(
         ? `${monthlyTrend[0].month} to ${monthlyTrend[monthlyTrend.length - 1].month}`
         : "";
 
-    // Comparison: street-level 1-mile returns more data, so adjust thresholds
-    const comparisonToAverage =
-      totalCrimes > 100 ? "above" : totalCrimes > 30 ? "average" : "below";
+    // Default LSOA population (~1,700 is the typical LSOA size from ONS Census 2021)
+    const lsoaPopulation = 1700;
+
+    // Calculate crime rates per 1,000 residents per year
+    const crimeRates: Record<string, { rate: number; count: number }> = {};
+    for (const [category, count] of Object.entries(crimesByCategory)) {
+      crimeRates[category] = {
+        count,
+        rate: Math.round((count / lsoaPopulation) * 1000 * 10) / 10,
+      };
+    }
+
+    // Comparison: use borough averages if available, else use thresholds
+    let comparisonToAverage: "below" | "average" | "above";
+    if (Object.keys(boroughAverages).length > 0) {
+      const boroughTotal = Object.values(boroughAverages).reduce((s, v) => s + v, 0);
+      // Normalise — borough data is force-wide so scale for comparison
+      const ratio = boroughTotal > 0 ? totalCrimes / (boroughTotal * 0.01) : 1;
+      comparisonToAverage = ratio < 0.8 ? "below" : ratio > 1.2 ? "above" : "average";
+    } else {
+      comparisonToAverage =
+        totalCrimes > 100 ? "above" : totalCrimes > 30 ? "average" : "below";
+    }
 
     return {
       data: {
         totalCrimes,
         crimesByCategory,
+        crimeRates,
         monthlyTrend,
-        comparisonToAverage: comparisonToAverage as
-          | "below"
-          | "average"
-          | "above",
+        comparisonToAverage,
         boroughAverages,
         boroughName: boroughName || forceName,
         dateRange,
+        lsoaPopulation,
       },
       cached: false,
       fetchedAt: new Date().toISOString(),

@@ -27,8 +27,6 @@ import {
   CheckCircle2,
   XCircle,
   Info,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { BuyerReport, EnrichedComparable } from "@/lib/api/types";
 import { ReportSection } from "@/components/report/ReportSection";
@@ -53,6 +51,12 @@ const formatPrice = (price: number) =>
     currency: "GBP",
     maximumFractionDigits: 0,
   }).format(price);
+
+const formatPriceShort = (price: number) => {
+  if (price >= 1_000_000) return `\u00A3${(price / 1_000_000).toFixed(1)}M`;
+  if (price >= 1_000) return `\u00A3${Math.round(price / 1_000)}k`;
+  return `\u00A3${price}`;
+};
 
 const epcColor = (rating: string) => {
   const map: Record<string, string> = {
@@ -165,7 +169,6 @@ export default function BuyerReportPage() {
   const { id } = useParams();
   const [report, setReport] = useState<BuyerReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showMethodology, setShowMethodology] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem(`report_${id}`);
@@ -294,17 +297,19 @@ export default function BuyerReportPage() {
       {/* ──────── QUICK STATS ──────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <div className="bg-white rounded-xl border border-border p-4 text-center">
-          <p className="text-xs text-muted">Est. Value</p>
+          <p className="text-xs text-muted">Projected Range</p>
           <p className="text-lg font-heading font-bold mt-1">
-            {valuation && valuation.estimatedValue > 0
-              ? formatPrice(valuation.estimatedValue)
+            {valuation && valuation.rangeLow > 0 && valuation.rangeHigh > 0
+              ? `${formatPriceShort(valuation.rangeLow)} \u2013 ${formatPriceShort(valuation.rangeHigh)}`
               : priceHistory && priceHistory.estimatedValueRange.high > 0
-              ? formatPrice(Math.round((priceHistory.estimatedValueRange.low + priceHistory.estimatedValueRange.high) / 2))
+              ? `${formatPriceShort(priceHistory.estimatedValueRange.low)} \u2013 ${formatPriceShort(priceHistory.estimatedValueRange.high)}`
               : "N/A"}
           </p>
           {valuation && (
             <p className="text-[10px] text-muted mt-0.5">
-              {valuation.confidence} confidence
+              {valuation.confidence === "High" ? "Based on HPI + comparables" :
+               valuation.confidence === "Medium" ? "Based on HPI only" :
+               "Limited data available"}
             </p>
           )}
         </div>
@@ -405,11 +410,11 @@ export default function BuyerReportPage() {
           <SourceAttribution sources={["EPC Open Data API", "Land Registry Price Paid Data"]} />
         </ReportSection>
 
-        {/* ──────── 2. PRICE HISTORY & VALUATION ──────── */}
+        {/* ──────── 2. PRICE HISTORY & PROJECTED VALUE ──────── */}
         <ReportSection
           icon={TrendingUp}
-          title="Price History & Valuation"
-          subtitle="Transaction history and estimated value"
+          title="Price History & Projected Value"
+          subtitle="Transaction history and projected value range"
           unavailable={!priceHistory}
         >
           {priceHistory && (
@@ -424,10 +429,13 @@ export default function BuyerReportPage() {
                   </p>
                 </div>
                 <div className="bg-background rounded-xl p-4 text-center">
-                  <p className="text-xs text-muted">Est. Value Range</p>
+                  <p className="text-xs text-muted">Projected Value Range</p>
                   <p className="text-xl font-heading font-bold mt-1">
-                    {formatPrice(priceHistory.estimatedValueRange.low)} – {formatPrice(priceHistory.estimatedValueRange.high)}
+                    {formatPrice(priceHistory.estimatedValueRange.low)} &ndash; {formatPrice(priceHistory.estimatedValueRange.high)}
                   </p>
+                  {valuation && (
+                    <p className="text-[10px] text-muted mt-0.5">Midpoint: {formatPrice(valuation.estimatedValue)}</p>
+                  )}
                 </div>
                 <div className="bg-background rounded-xl p-4 text-center">
                   <p className="text-xs text-muted">Transactions</p>
@@ -437,40 +445,86 @@ export default function BuyerReportPage() {
                 </div>
               </div>
 
-              {/* Valuation methodology expandable */}
+              {/* Projected Value — methodology always visible */}
               {valuation && valuation.estimatedValue > 0 && (
-                <div className="mt-4">
-                  <button
-                    onClick={() => setShowMethodology(!showMethodology)}
-                    className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-                  >
-                    {showMethodology ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    How we calculated this
-                  </button>
-                  {showMethodology && (
-                    <div className="mt-2 bg-background rounded-xl p-4 text-sm space-y-1.5">
+                <div className="mt-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <h4 className="text-sm font-semibold">Projected Value Range</h4>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      valuation.confidence === "High" ? "bg-green-50 text-green-700" :
+                      valuation.confidence === "Medium" ? "bg-amber-50 text-amber-700" :
+                      "bg-gray-100 text-gray-600"
+                    }`}>
+                      {valuation.confidence === "High" ? "\u25CF Based on HPI + comparables" :
+                       valuation.confidence === "Medium" ? "\u25CF Based on HPI only" :
+                       "\u25CF Limited data available"}
+                    </span>
+                  </div>
+
+                  {/* Range bar */}
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-sm font-medium text-muted">{formatPrice(valuation.rangeLow)}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-3 relative overflow-hidden">
+                      <div className="h-full rounded-full bg-primary/30" style={{ width: "100%" }} />
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-3 bg-primary rounded-full" />
+                    </div>
+                    <span className="text-sm font-medium text-muted">{formatPrice(valuation.rangeHigh)}</span>
+                  </div>
+                  <p className="text-xs text-center text-muted mb-4">
+                    Midpoint: {formatPrice(valuation.estimatedValue)}
+                  </p>
+
+                  {/* Methodology breakdown */}
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <h5 className="text-[11px] uppercase tracking-wider text-gray-400 mb-3">
+                      How we calculated this
+                    </h5>
+                    <div className="space-y-3">
                       {valuation.hpiAdjustedValue && (
-                        <p className="text-muted">
-                          HPI-adjusted from last sale: <span className="font-medium text-foreground">{formatPrice(valuation.hpiAdjustedValue)}</span>
-                        </p>
+                        <div className="pb-3 border-b border-gray-100">
+                          <div className="flex justify-between items-start">
+                            <span className="text-[13px] text-gray-500">Last sale price (HPI-adjusted)</span>
+                            <span className="text-[15px] font-bold text-foreground">{formatPrice(valuation.hpiAdjustedValue)}</span>
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            {valuation.lastSalePrice
+                              ? `Sold for ${formatPrice(valuation.lastSalePrice)} in ${valuation.lastSaleDate ? new Date(valuation.lastSaleDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A"}.`
+                              : ""}
+                            {" "}Adjusted using Nationwide House Price Index{valuation.region ? ` for ${valuation.region}` : ""}{valuation.propertyType ? ` (${valuation.propertyType})` : ""}.
+                          </p>
+                        </div>
                       )}
                       {valuation.compBasedValue && (
-                        <p className="text-muted">
-                          Based on comparable sales: <span className="font-medium text-foreground">{formatPrice(valuation.compBasedValue)}</span>
-                        </p>
+                        <div className="pb-3 border-b border-gray-100">
+                          <div className="flex justify-between items-start">
+                            <span className="text-[13px] text-gray-500">Based on comparable sales</span>
+                            <span className="text-[15px] font-bold text-foreground">{formatPrice(valuation.compBasedValue)}</span>
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            {valuation.medianPsf
+                              ? `Median of \u00A3${valuation.medianPsf}/sqft from ${valuation.compCount || "multiple"} comparable sales`
+                              : "Based on recent comparable sales in the area"}
+                            {valuation.floorAreaSqft ? ` \u00D7 ${Math.round(valuation.floorAreaSqft)} sqft floor area.` : "."}
+                          </p>
+                        </div>
                       )}
-                      <p className="text-muted">
-                        Blended estimate: <span className="font-medium text-foreground">{formatPrice(valuation.estimatedValue)}</span>
-                        {valuation.hpiAdjustedValue && valuation.compBasedValue && " (40% HPI + 60% comps)"}
-                      </p>
-                      <p className="text-muted">
-                        Confidence: <span className="font-medium text-foreground">{valuation.confidence}</span>
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-2">
-                        Source: Nationwide HPI, Land Registry Price Paid Data
-                      </p>
                     </div>
-                  )}
+                  </div>
+
+                  {/* Caveat — always visible, prominent */}
+                  <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <p className="text-[13px] font-semibold text-amber-900 mb-1">
+                      This is not a property valuation.
+                    </p>
+                    <p className="text-[12.5px] text-amber-800 leading-relaxed">
+                      This projection is based on publicly available house price index data and
+                      recent comparable sales in the area. It is intended as a rough guide only
+                      and should not be used for mortgage applications, investment decisions, or
+                      price negotiations. For an accurate valuation, commission a RICS-qualified
+                      surveyor. Actual market value depends on property condition, specification,
+                      and current demand — factors this projection cannot account for.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -669,29 +723,92 @@ export default function BuyerReportPage() {
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-4">
                 <Train className="w-4 h-4 text-primary" />
-                <h3 className="text-sm font-semibold">Transport</h3>
+                <h3 className="text-sm font-semibold">Getting Around</h3>
               </div>
+
+              {/* Nearest stations */}
               {transport.nearestStations.length > 0 && (
-                <div className="space-y-2 text-sm">
-                  {transport.nearestStations.slice(0, 5).map((station, i) => (
-                    <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                      <div>
-                        <p className="font-medium">{station.name}</p>
-                        <div className="flex gap-1 mt-0.5 flex-wrap">
-                          {station.lines.slice(0, 3).map((line, j) => (
-                            <span key={j} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{line}</span>
-                          ))}
+                <>
+                  <h4 className="text-xs font-semibold text-muted uppercase mb-2">Nearest Stations</h4>
+                  <div className="space-y-2 text-sm">
+                    {transport.nearestStations.slice(0, 5).map((station, i) => (
+                      <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                        <div>
+                          <p className="font-medium">{station.name}</p>
+                          <div className="flex gap-1 mt-0.5 flex-wrap">
+                            {station.lines.slice(0, 3).map((line, j) => (
+                              <span key={j} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{line}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-muted">{station.distanceKm}km</span>
+                          <p className="text-xs text-muted">{Math.round(station.distanceKm / 5 * 60)} min walk</p>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-muted">{station.distanceKm}km</span>
-                        <p className="text-xs text-muted">{Math.round(station.distanceKm / 5 * 60)} min walk</p>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Personalised commute */}
+              {transport.personalCommute && (
+                <div className="mt-5">
+                  <h4 className="text-xs font-semibold text-muted uppercase mb-2">Your Commute</h4>
+                  <div className="bg-primary-light rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-primary shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{transport.personalCommute.destinationLabel}</p>
+                          <p className="text-xs text-muted">{transport.personalCommute.mode}</p>
+                        </div>
                       </div>
+                      <p className="text-xl font-heading font-bold text-foreground">
+                        {transport.personalCommute.durationMinutes} min
+                      </p>
                     </div>
-                  ))}
+                    {transport.personalCommute.summary && (
+                      <p className="text-xs text-muted mt-2 pl-6">
+                        {transport.personalCommute.summary}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Additional destinations */}
+                  {transport.additionalCommutes && transport.additionalCommutes.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {transport.additionalCommutes.map((commute, i) => (
+                        <div key={i} className="flex items-center justify-between py-2 px-3 bg-background rounded-lg text-sm">
+                          <span className="text-muted">{commute.destinationLabel}</span>
+                          <span className="font-medium">{commute.durationMinutes} min ({commute.mode})</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-              {transport.commuteToCenter.length > 0 && (
+
+              {/* Default/reference commute times */}
+              {transport.defaultCommutes && transport.defaultCommutes.length > 0 && (
+                <div className="mt-5">
+                  <h4 className="text-xs font-semibold text-muted uppercase mb-2">Reference Commute Times</h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    {transport.defaultCommutes.map((commute, i) => (
+                      <div key={i} className="bg-background rounded-xl p-3 text-center">
+                        <p className="text-xs text-muted">{commute.destinationLabel}</p>
+                        <p className="text-lg font-heading font-bold mt-1">{commute.durationMinutes} min</p>
+                        {commute.fromStation && (
+                          <p className="text-[10px] text-gray-400 mt-0.5">from {commute.fromStation}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Fallback: existing commute to center */}
+              {!transport.personalCommute && !transport.defaultCommutes && transport.commuteToCenter.length > 0 && (
                 <div className="mt-4 bg-primary-light rounded-xl p-4 flex items-center justify-between">
                   <p className="text-sm text-primary font-medium">Commute to Central London</p>
                   <p className="text-xl font-heading font-bold text-foreground">
@@ -699,7 +816,8 @@ export default function BuyerReportPage() {
                   </p>
                 </div>
               )}
-              <SourceAttribution sources={["TfL Journey Planner API"]} />
+
+              <SourceAttribution sources={["TfL Journey Planner API", "OSRM"]} />
             </div>
           )}
 
@@ -822,15 +940,50 @@ export default function BuyerReportPage() {
         </ReportSection>
       </div>
 
-      {/* ──────── DATA SOURCES FOOTER ──────── */}
-      <div className="mt-8 text-center text-xs text-muted">
+      {/* ──────── REPORT DISCLAIMER ──────── */}
+      <div className="mt-8 bg-gray-50 rounded-2xl border border-gray-200 p-6">
+        <div className="flex items-start gap-3 mb-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <h3 className="text-sm font-semibold text-foreground">Important</h3>
+        </div>
+        <div className="text-[12.5px] text-gray-600 leading-relaxed space-y-3 ml-8">
+          <p>
+            This report is produced by Viven for informational purposes only and does not
+            constitute a property valuation, survey, environmental assessment, or legal advice.
+          </p>
+          <p>
+            Projected property values are calculated using publicly available house price
+            index data and recent comparable sales. They should not be relied upon for
+            mortgage applications, investment decisions, or negotiations.
+          </p>
+          <p>
+            Crime statistics reflect reported incidents only. Flood risk and ground stability
+            assessments are indicative and based on publicly available data &mdash; they do
+            not replace professional environmental searches.
+          </p>
+          <p>
+            Before purchasing any property, we recommend commissioning a full RICS building
+            survey, obtaining independent legal advice, and conducting formal local authority
+            searches through your conveyancer. This report supplements &mdash; not
+            replaces &mdash; professional due diligence.
+          </p>
+          <p className="text-gray-400">
+            Data refreshed: {new Date(report.generatedAt).toLocaleDateString("en-GB", {
+              day: "numeric", month: "long", year: "numeric",
+            })}. Information may have changed since this date. Viven accepts no
+            liability for decisions made based on this report.
+          </p>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-4 ml-8">
+          &copy; {new Date().getFullYear()} Viven. All rights reserved.
+        </p>
+      </div>
+
+      {/* ──────── DATA SOURCES ──────── */}
+      <div className="mt-4 text-center text-xs text-muted">
         <p>
           Data sourced from: Land Registry, EPC Open Data, Environment Agency,
           Police UK, GIAS, TfL, Ofcom, ONS, BGS, DEFRA, PlanIt, OpenStreetMap, Nationwide HPI
-        </p>
-        <p className="mt-1">
-          Report generated on {new Date(report.generatedAt).toLocaleDateString("en-GB")}.
-          Data may not reflect the most recent changes.
         </p>
       </div>
     </div>

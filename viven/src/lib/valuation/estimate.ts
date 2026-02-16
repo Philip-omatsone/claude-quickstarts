@@ -49,6 +49,7 @@ export async function estimateValue(
 ): Promise<ValuationResult> {
   let hpiAdjusted: number | null = null;
   let compBased: number | null = null;
+  let medianPsf: number | null = null;
 
   // Step A: HPI adjustment
   if (lastSalePrice && lastSaleDate && lastSalePrice > 0) {
@@ -64,7 +65,7 @@ export async function estimateValue(
     const compPricesPerSqft = compsWithArea.map(
       (c) => c.price / c.floorAreaSqft!
     );
-    const medianPsf = median(compPricesPerSqft);
+    medianPsf = median(compPricesPerSqft);
     compBased = medianPsf * floorAreaSqft;
   }
 
@@ -104,6 +105,13 @@ export async function estimateValue(
     compBasedValue: compBased ? Math.round(compBased) : null,
     methodology,
     confidence,
+    lastSalePrice: lastSalePrice || undefined,
+    lastSaleDate: lastSaleDate || undefined,
+    region: region || undefined,
+    propertyType: propertyType || undefined,
+    medianPsf: medianPsf ? Math.round(medianPsf) : undefined,
+    compCount: compsWithArea.length > 0 ? compsWithArea.length : undefined,
+    floorAreaSqft: floorAreaSqft || undefined,
   };
 }
 
