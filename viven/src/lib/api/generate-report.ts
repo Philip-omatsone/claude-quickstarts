@@ -199,9 +199,14 @@ export async function generateBuyerReport(
   }
 
   // ── Enhanced Schools Data ──
+  // Pass basic schools as fallback so the section still renders if GIAS API fails
   let schoolsData: BuyerReport["schoolsData"] = null;
   try {
-    const enhancedSchoolsRes = await getEnhancedSchools(latitude, longitude);
+    const enhancedSchoolsRes = await getEnhancedSchools(
+      latitude,
+      longitude,
+      schoolsRes.data || []
+    );
     schoolsData = enhancedSchoolsRes.data;
   } catch {
     // Enhanced schools non-critical — falls back to basic school data

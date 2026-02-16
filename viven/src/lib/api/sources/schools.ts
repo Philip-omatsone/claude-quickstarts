@@ -104,12 +104,61 @@ function generateSchoolsSummary(
 }
 
 /**
+ * Convert basic SchoolInfo[] (from Ofsted/GIAS list endpoint) into
+ * the richer SchoolsResult format used by the Schools report section.
+ * This acts as a fallback when the GIAS lat/lng search fails.
+ */
+function enrichBasicSchools(schools: SchoolInfo[]): SchoolsResult | null {
+  if (!schools || schools.length === 0) return null;
+
+  const enhanced: EnhancedSchoolInfo[] = schools.map((s) => ({
+    ...s,
+    religiousCharacter: null,
+    capacity: null,
+    isOversubscribed: false,
+    performanceSummary: "Performance data not available",
+  }));
+
+  const primary = enhanced
+    .filter((s) => s.type === "primary")
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, 8);
+
+  const secondary = enhanced
+    .filter((s) => s.type === "secondary")
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, 6);
+
+  // All-through: both primary and secondary age ranges
+  const allThrough = enhanced
+    .filter((s) => {
+      if (!s.ageRange) return false;
+      const parts = s.ageRange.split("-").map(Number);
+      return parts.length === 2 && parts[0] <= 5 && parts[1] >= 16;
+    })
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, 4);
+
+  if (primary.length === 0 && secondary.length === 0 && allThrough.length === 0) {
+    return null;
+  }
+
+  const summary = generateSchoolsSummary(primary, secondary);
+
+  return { primary, secondary, allThrough, summary };
+}
+
+/**
  * Fetch nearby schools from GIAS API and enrich with Ofsted ratings.
- * Falls back to the existing Ofsted source if GIAS is unavailable.
+ * Falls back to converting the basic SchoolInfo[] if GIAS search fails.
+ *
+ * @param fallbackSchools - Basic SchoolInfo[] from the existing Ofsted source,
+ *   used when the GIAS lat/lng API doesn't return results.
  */
 export async function getEnhancedSchools(
   latitude: number,
   longitude: number,
+  fallbackSchools?: SchoolInfo[],
   primaryRadiusKm: number = 1,
   secondaryRadiusKm: number = 2
 ): Promise<DataSourceResponse<SchoolsResult>> {
@@ -215,66 +264,59 @@ export async function getEnhancedSchools(
       }
     }
 
-    // If GIAS API failed or returned empty, use Postcodes.io nearby postcodes approach
-    if (rawSchools.length === 0) {
-      // Return empty result with appropriate message
+    // If GIAS API returned results, categorise and return
+    if (rawSchools.length > 0) {
+      const primary = rawSchools
+        .filter(
+          (s) =>
+            s.type === "primary" &&
+            s.distanceKm <= primaryRadiusKm
+        )
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .slice(0, 8);
+
+      const secondary = rawSchools
+        .filter(
+          (s) =>
+            s.type === "secondary" &&
+            s.distanceKm <= secondaryRadiusKm
+        )
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .slice(0, 6);
+
+      const allThrough = rawSchools
+        .filter((s) => {
+          if (!s.ageRange) return false;
+          const parts = s.ageRange.split("-").map(Number);
+          return parts.length === 2 && parts[0] <= 5 && parts[1] >= 16;
+        })
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .slice(0, 4);
+
+      const summary = generateSchoolsSummary(primary, secondary);
+
       return {
-        data: {
-          primary: [],
-          secondary: [],
-          allThrough: [],
-          summary: "School data temporarily unavailable.",
-        },
-        error: "GIAS API unavailable — school data could not be fetched",
+        data: { primary, secondary, allThrough, summary },
         cached: false,
         fetchedAt: new Date().toISOString(),
       };
     }
 
-    // Separate by phase and apply distance filters
-    const primary = rawSchools
-      .filter(
-        (s) =>
-          s.type === "primary" &&
-          s.distanceKm <= primaryRadiusKm
-      )
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-      .slice(0, 8);
-
-    const secondary = rawSchools
-      .filter(
-        (s) =>
-          s.type === "secondary" &&
-          s.distanceKm <= secondaryRadiusKm
-      )
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-      .slice(0, 6);
-
-    // All-through schools have both primary and secondary age ranges
-    const allThrough = rawSchools
-      .filter((s) => {
-        if (!s.ageRange) return false;
-        const parts = s.ageRange.split("-").map(Number);
-        return parts.length === 2 && parts[0] <= 5 && parts[1] >= 16;
-      })
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-      .slice(0, 4);
-
-    const summary = generateSchoolsSummary(primary, secondary);
-
+    // GIAS API failed or returned empty — fall back to basic schools
+    const enriched = enrichBasicSchools(fallbackSchools || []);
     return {
-      data: { primary, secondary, allThrough, summary },
+      data: enriched, // null if no schools, SchoolsResult if some
+      error: enriched
+        ? undefined
+        : "GIAS API unavailable and no fallback school data",
       cached: false,
       fetchedAt: new Date().toISOString(),
     };
   } catch (error) {
+    // Exception path — still try the fallback
+    const enriched = enrichBasicSchools(fallbackSchools || []);
     return {
-      data: {
-        primary: [],
-        secondary: [],
-        allThrough: [],
-        summary: "School data temporarily unavailable.",
-      },
+      data: enriched,
       error: `Failed to fetch enhanced school data: ${error}`,
       cached: false,
       fetchedAt: new Date().toISOString(),
