@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Viven — How It Was Built</title>
+<style>
+  @page { margin: 2cm; size: A4; }
+  body { font-family: 'Segoe UI', Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #1a1a1a; max-width: 210mm; margin: 0 auto; padding: 2cm; }
+  h1 { font-size: 24pt; color: #16A34A; margin-top: 0; border-bottom: 3px solid #16A34A; padding-bottom: 8px; }
+  h2 { font-size: 16pt; color: #15803D; margin-top: 36px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; page-break-after: avoid; }
+  h3 { font-size: 13pt; color: #374151; margin-top: 24px; page-break-after: avoid; }
+  h4 { font-size: 11pt; color: #4b5563; margin-top: 18px; }
+  p { margin: 8px 0; }
+  .subtitle { font-size: 13pt; color: #6b7280; font-style: italic; margin-top: -8px; }
+  .date { font-size: 10pt; color: #9ca3af; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 18px 0; font-size: 10pt; page-break-inside: avoid; }
+  th { background-color: #f0fdf4; color: #15803D; text-align: left; padding: 8px 10px; border: 1px solid #d1d5db; font-weight: 600; }
+  td { padding: 6px 10px; border: 1px solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background-color: #f9fafb; }
+  .flow-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px 20px; margin: 16px 0; font-family: 'Courier New', monospace; font-size: 10pt; line-height: 2; text-align: center; }
+  .flow-box .arrow { color: #16A34A; font-size: 14pt; }
+  .highlight { background: #fefce8; border-left: 4px solid #eab308; padding: 12px 16px; margin: 12px 0; font-size: 10.5pt; }
+  .note { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 16px; margin: 12px 0; font-size: 10.5pt; }
+  .toc { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 28px; margin: 20px 0; }
+  .toc ol { margin: 0; padding-left: 20px; }
+  .toc li { margin: 4px 0; }
+  .toc a { color: #15803D; text-decoration: none; }
+  .appendix-title { color: #b45309; }
+  strong { color: #111827; }
+  code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px; font-size: 10pt; }
+  .page-break { page-break-before: always; }
+  .cover { text-align: center; padding: 80px 0 40px 0; }
+  .cover h1 { font-size: 32pt; border: none; }
+  .cover .logo { font-size: 48pt; color: #16A34A; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+  ul { margin: 6px 0; padding-left: 24px; }
+  li { margin: 3px 0; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="logo">viven</div>
+  <h1>How It Was Built</h1>
+  <p class="subtitle">A non-technical guide to the technology behind Viven's UK property reports</p>
+  <p class="date">Report compiled: February 2026</p>
+</div>
+
+<div class="page-break"></div>
+
+<div class="toc">
+  <h2 style="margin-top:0; border:none;">Table of Contents</h2>
+  <ol>
+    <li><a href="#s1">What Is Viven?</a></li>
+    <li><a href="#s2">How It Works &mdash; The 30-Second Version</a></li>
+    <li><a href="#s3">Where the Data Comes From</a></li>
+    <li><a href="#s4">The Front End &mdash; What the User Sees</a></li>
+    <li><a href="#s5">The Back End &mdash; What Happens Behind the Scenes</a></li>
+    <li><a href="#s6">Payments</a></li>
+    <li><a href="#s7">The AI Layer</a></li>
+    <li><a href="#s8">The Scoring System</a></li>
+    <li><a href="#s9">Hosting and Deployment</a></li>
+    <li><a href="#s10">Technology Stack Summary</a></li>
+  </ol>
+  <p style="margin-top:12px;"><strong>Appendices</strong></p>
+  <ul style="list-style:upper-alpha;">
+    <li><a href="#appA">Development Timeline</a></li>
+    <li><a href="#appB">Barriers Faced and Overcome</a></li>
+    <li><a href="#appC">Full Data Source Reference</a></li>
+  </ul>
+</div>
+
+<div class="page-break"></div>
+
+<!-- SECTION 1 -->
+<h2 id="s1">1. What Is Viven?</h2>
+<p>Viven is a UK property intelligence platform. A user types in a postcode and address, pays &pound;9.99, and receives a comprehensive buyer report covering everything from price history and flood risk to local schools, crime statistics, and commute times.</p>
+<p>There is also a free rental report (for renters checking out an area) that covers neighbourhood-level data without property-specific details.</p>
+<p>The platform is entirely web-based &mdash; no app to download. It works on desktop and mobile browsers.</p>
+
+<!-- SECTION 2 -->
+<h2 id="s2">2. How It Works &mdash; The 30-Second Version</h2>
+<div class="flow-box">
+  User enters postcode<br>
+  <span class="arrow">&darr;</span><br>
+  Viven looks up the address (Land Registry + EPC records)<br>
+  <span class="arrow">&darr;</span><br>
+  User selects their property from a dropdown<br>
+  <span class="arrow">&darr;</span><br>
+  User pays &pound;9.99 via Stripe<br>
+  <span class="arrow">&darr;</span><br>
+  Viven&rsquo;s server contacts 15+ government APIs simultaneously<br>
+  <span class="arrow">&darr;</span><br>
+  All data is assembled into one report in ~10 seconds<br>
+  <span class="arrow">&darr;</span><br>
+  AI writes plain-English insights for each section<br>
+  <span class="arrow">&darr;</span><br>
+  User sees the full interactive report
+</div>
+<p>The entire process &mdash; from entering a postcode to reading the report &mdash; takes roughly 15&ndash;20 seconds.</p>
+
+<!-- SECTION 3 -->
+<div class="page-break"></div>
+<h2 id="s3">3. Where the Data Comes From</h2>
+<p>This is the core of Viven. Rather than relying on a single database, the platform pulls live data from <strong>17 separate sources</strong> every time a report is generated. Most of these are free UK government APIs (Application Programming Interfaces &mdash; essentially doors into government databases that software can open automatically).</p>
+
+<h3>3.1 Property &amp; Price Data</h3>
+<table>
+  <tr><th>Source</th><th>What It Provides</th><th>Who Runs It</th></tr>
+  <tr><td><strong>Land Registry Price Paid Data</strong></td><td>Every property sale in England &amp; Wales since 1995 &mdash; price, date, property type, tenure (freehold vs leasehold)</td><td>HM Land Registry</td></tr>
+  <tr><td><strong>Land Registry House Price Index</strong></td><td>How property prices have changed over time in each local authority, used to adjust old sale prices to today&rsquo;s values</td><td>HM Land Registry</td></tr>
+  <tr><td><strong>EPC Register</strong></td><td>Energy Performance Certificate data &mdash; energy rating (A to G), floor area in square metres, number of rooms, property type, improvement recommendations</td><td>Ministry of Housing</td></tr>
+</table>
+
+<h3>3.2 Risk &amp; Environment</h3>
+<table>
+  <tr><th>Source</th><th>What It Provides</th><th>Who Runs It</th></tr>
+  <tr><td><strong>Environment Agency Flood Map</strong></td><td>Flood zones (1, 2, or 3), risk from rivers/sea, surface water, and reservoirs</td><td>Environment Agency</td></tr>
+  <tr><td><strong>British Geological Survey (BGS)</strong></td><td>Ground stability / subsidence risk, bedrock type, shrink-swell clay hazard</td><td>BGS (NERC)</td></tr>
+  <tr><td><strong>UK Health Security Agency</strong></td><td>Radon gas levels by area</td><td>UKHSA</td></tr>
+  <tr><td><strong>DEFRA UK-AIR</strong></td><td>Air quality index, pollutant levels (PM2.5, nitrogen dioxide, ozone, PM10), nearest monitoring station</td><td>Defra</td></tr>
+</table>
+
+<h3>3.3 Neighbourhood &amp; Community</h3>
+<table>
+  <tr><th>Source</th><th>What It Provides</th><th>Who Runs It</th></tr>
+  <tr><td><strong>Police UK</strong></td><td>Crime incidents by category (burglary, robbery, ASB, etc.), 12-month trends, comparison to borough averages</td><td>Home Office</td></tr>
+  <tr><td><strong>Get Information About Schools (GIAS)</strong></td><td>School names, locations, Ofsted ratings, pupil numbers, age ranges, religious character, capacity</td><td>Department for Education</td></tr>
+  <tr><td><strong>ONS Census (via Nomis)</strong></td><td>Population, age breakdown, tenure mix (how many people own vs rent), deprivation index</td><td>Office for National Statistics</td></tr>
+</table>
+
+<h3>3.4 Transport &amp; Amenities</h3>
+<table>
+  <tr><th>Source</th><th>What It Provides</th><th>Who Runs It</th></tr>
+  <tr><td><strong>TfL Unified API</strong></td><td>Nearest tube, train, and bus stops with distances; journey planning for commute times</td><td>Transport for London</td></tr>
+  <tr><td><strong>OSRM</strong></td><td>Driving and cycling route times and distances</td><td>Open-source routing engine</td></tr>
+  <tr><td><strong>OpenStreetMap (via Overpass API)</strong></td><td>Nearby amenities &mdash; supermarkets, restaurants, parks, GP surgeries, gyms, pharmacies</td><td>OpenStreetMap community</td></tr>
+  <tr><td><strong>Google Places API</strong> <em>(optional)</em></td><td>Same as above but with ratings and reviews, if a Google API key is configured</td><td>Google</td></tr>
+</table>
+
+<h3>3.5 Connectivity</h3>
+<table>
+  <tr><th>Source</th><th>What It Provides</th><th>Who Runs It</th></tr>
+  <tr><td><strong>Ofcom Broadband Data</strong></td><td>Average download/upload speeds, percentage with superfast and ultrafast broadband</td><td>Ofcom</td></tr>
+</table>
+
+<h3>3.6 Location</h3>
+<table>
+  <tr><th>Source</th><th>What It Provides</th><th>Who Runs It</th></tr>
+  <tr><td><strong>Postcodes.io</strong></td><td>Converts a postcode into precise coordinates (latitude/longitude), plus administrative area names</td><td>Open-source (ONS data)</td></tr>
+</table>
+
+<h3>How Caching Works</h3>
+<p>To avoid hammering these APIs and to speed up repeat lookups, each data source has a &ldquo;freshness window&rdquo;:</p>
+<ul>
+  <li><strong>Geology and census data</strong>: Cached for 1 year (this data barely changes)</li>
+  <li><strong>Flood, crime, demographics</strong>: Cached for 30 days (updated monthly)</li>
+  <li><strong>Price history, planning applications</strong>: Cached for 24 hours</li>
+  <li><strong>Transport and amenities</strong>: Cached for 7 days</li>
+  <li><strong>Air quality</strong>: Cached for 24 hours (updated daily)</li>
+</ul>
+<p>This means if two users look up the same postcode within 24 hours, the second request reuses the data from the first, making it faster and reducing load on government servers.</p>
+
+<!-- SECTION 4 -->
+<div class="page-break"></div>
+<h2 id="s4">4. The Front End &mdash; What the User Sees</h2>
+
+<h3>4.1 Technology</h3>
+<p>The website is built with <strong>Next.js</strong> (version 16), which is a framework based on React &mdash; the same technology used by Facebook, Netflix, and Airbnb. It handles both the pages you see and the server logic behind them.</p>
+<p>Styling uses <strong>Tailwind CSS</strong>, a system where the design is coded directly alongside the page structure rather than in separate style files. The colour palette is:</p>
+<ul>
+  <li><strong>Primary green</strong> (#16A34A) &mdash; for buttons, highlights, and the Viven brand</li>
+  <li><strong>Off-white background</strong> (#FAFAF8) &mdash; easy on the eyes</li>
+  <li><strong>Two fonts</strong>: <em>DM Sans</em> for body text, <em>Space Grotesk</em> for headings</li>
+</ul>
+<p>Charts are drawn using <strong>Recharts</strong> (a React charting library), and icons come from <strong>Lucide</strong> (an open-source icon set).</p>
+
+<h3>4.2 The Pages</h3>
+<p><strong>For Buyers:</strong></p>
+<ul>
+  <li><strong>Homepage</strong> &mdash; Enter a postcode</li>
+  <li><strong>Preview page</strong> &mdash; See a blurred preview of the report (to show what you&rsquo;ll get)</li>
+  <li><strong>Generating page</strong> &mdash; Animated progress bar while data is fetched (8 steps shown)</li>
+  <li><strong>Report page</strong> &mdash; The full interactive report</li>
+</ul>
+<p><strong>For Renters:</strong></p>
+<ul>
+  <li>Same flow but free, and the report covers area-level data rather than a specific property</li>
+</ul>
+<p><strong>Content Hub</strong> (also on the site):</p>
+<ul>
+  <li>15+ buyer guides (first-time buyers, mortgages, surveys, stamp duty, etc.)</li>
+  <li>9 renter guides (deposits, tenancy agreements, repairs, etc.)</li>
+  <li>7 financial calculators (mortgage, stamp duty, affordability, rent-vs-buy, etc.)</li>
+  <li>6 checklists (viewing, moving day, completion, etc.)</li>
+  <li>Letter and email templates for renters</li>
+</ul>
+
+<h3>4.3 The Buyer Report Layout</h3>
+<p>When a user opens their report, they see these sections from top to bottom:</p>
+<ol>
+  <li><strong>Header</strong> &mdash; Address, area, date generated</li>
+  <li><strong>Viven Verdict</strong> &mdash; A score out of 100 with green/amber/red coloured tags like &ldquo;Low Flood Risk&rdquo; or &ldquo;Outstanding Schools&rdquo;</li>
+  <li><strong>Quick Stats</strong> &mdash; Four boxes showing Last Sale price, Price per sq ft, EPC Rating, and Commute Time</li>
+  <li><strong>Property Overview</strong> &mdash; EPC data, floor area, rooms, tenure, last sale details, with an AI-written summary</li>
+  <li><strong>Price History &amp; Market Position</strong> &mdash; An interactive chart showing every recorded sale of this property, comparable sales nearby, and area averages</li>
+  <li><strong>Risk Assessment</strong> &mdash; Flood risk, ground stability, radon, and nearby planning applications</li>
+  <li><strong>Area &amp; Neighbourhood</strong> &mdash; Crime stats (with charts), schools (with Ofsted ratings), transport links, broadband speeds, and demographics</li>
+  <li><strong>Neighbourhood Vibe</strong> &mdash; Six &ldquo;vibe scores&rdquo; out of 10: Walkability, Green Space, Food &amp; Drink, Family Friendly, Nightlife, Peace &amp; Quiet</li>
+  <li><strong>Environmental</strong> &mdash; Air quality index and pollutant breakdown</li>
+  <li><strong>Recommended Reading</strong> &mdash; Links to relevant guides based on the property</li>
+  <li><strong>Disclaimer</strong> &mdash; Legal text explaining this is not a formal valuation</li>
+</ol>
+
+<!-- SECTION 5 -->
+<div class="page-break"></div>
+<h2 id="s5">5. The Back End &mdash; What Happens Behind the Scenes</h2>
+
+<h3>5.1 Report Generation</h3>
+<p>When a user clicks &ldquo;Generate Report&rdquo;, here&rsquo;s what the server does:</p>
+
+<p><strong>Step 1 &mdash; Geocode the postcode</strong><br>
+The postcode is sent to Postcodes.io, which returns the precise latitude, longitude, local authority name, LSOA code (a small statistical area), and region.</p>
+
+<p><strong>Step 2 &mdash; Fan out to all data sources simultaneously</strong><br>
+Rather than calling each API one after another (which would take minutes), the server fires off all 15+ requests at the same time. This is like sending 15 letters at once rather than waiting for each reply before sending the next.</p>
+
+<p><strong>Step 3 &mdash; Process and enrich</strong><br>
+Once the raw data comes back:</p>
+<ul>
+  <li>Land Registry transactions are matched with EPC records to add floor area and bedroom counts to each sale</li>
+  <li>Crime data is compared to borough averages to determine if the area is above or below average</li>
+  <li>Schools are filtered by distance (primary within 1km, secondary within 2km) and sorted by proximity</li>
+</ul>
+
+<p><strong>Step 4 &mdash; Calculate scores</strong><br>
+The Viven Verdict (0&ndash;100) is calculated by weighting eight factors: flood risk, ground stability, crime, schools, transport, EPC rating, price value, and amenities. Vibe Scores are calculated from amenity counts and categories.</p>
+
+<p><strong>Step 5 &mdash; Generate AI insights</strong><br>
+The data is sent to Claude (Anthropic&rsquo;s AI) which writes plain-English summaries for each section.</p>
+
+<p><strong>Step 6 &mdash; Return the report</strong><br>
+Everything is packaged into a single structured data object and sent to the browser, which renders it into the visual report.</p>
+
+<h3>5.2 The Comparable Sales System</h3>
+<p>One of the most important features is showing comparable property sales. Viven:</p>
+<ol>
+  <li>Fetches all transactions in the same postcode area from the Land Registry</li>
+  <li>Cross-references each with the EPC register to find floor area and bedroom count</li>
+  <li>Groups them: same street first, then same postcode sector, then wider area</li>
+  <li>Displays them with address, price, date, property type, and tenure</li>
+</ol>
+<p>These are real, recorded Land Registry transactions &mdash; not estimates.</p>
+
+<h3>5.3 The Scoring Engine</h3>
+<table>
+  <tr><th>Factor</th><th>Max Points</th><th>How It&rsquo;s Scored</th></tr>
+  <tr><td>Flood Risk</td><td>15</td><td>Zone 1 (lowest risk) = 12 points, Zone 2 = 8, Zone 3 = 3</td></tr>
+  <tr><td>Ground Stability</td><td>10</td><td>Very Low subsidence risk = 10, High = 2</td></tr>
+  <tr><td>Crime</td><td>15</td><td>Below borough average = 15, Average = 10, Above = 5</td></tr>
+  <tr><td>Schools</td><td>10</td><td>Outstanding Ofsted nearby = 10, Good = 7</td></tr>
+  <tr><td>Transport</td><td>15</td><td>Commute under 20 mins = 15, station within 500m = 13</td></tr>
+  <tr><td>EPC Rating</td><td>10</td><td>A = 10, B = 9, C = 7, D = 5, E = 3</td></tr>
+  <tr><td>Price Value</td><td>15</td><td>Below area average = best score</td></tr>
+  <tr><td>Amenities</td><td>10</td><td>25+ nearby amenities = 10</td></tr>
+</table>
+
+<p>The score determines the verdict text:</p>
+<ul>
+  <li><strong>75+</strong>: &ldquo;A solid buy&rdquo;</li>
+  <li><strong>60&ndash;74</strong>: &ldquo;Reasonable option with some considerations&rdquo;</li>
+  <li><strong>40&ndash;59</strong>: &ldquo;Worth investigating, but proceed with caution&rdquo;</li>
+  <li><strong>Below 40</strong>: &ldquo;Significant concerns &mdash; due diligence recommended&rdquo;</li>
+</ul>
+
+<!-- SECTION 6 -->
+<div class="page-break"></div>
+<h2 id="s6">6. Payments</h2>
+<p>Payments are handled by <strong>Stripe</strong>, one of the world&rsquo;s largest payment processors (used by Amazon, Google, and Shopify).</p>
+<p><strong>The flow:</strong></p>
+<ol>
+  <li>User clicks &ldquo;Get Report for &pound;9.99&rdquo;</li>
+  <li>Viven&rsquo;s server creates a &ldquo;Checkout Session&rdquo; with Stripe, including the postcode and address as metadata</li>
+  <li>The user is redirected to Stripe&rsquo;s hosted payment page (Viven never sees the card number)</li>
+  <li>After payment, Stripe redirects back to Viven&rsquo;s &ldquo;generating&rdquo; page</li>
+  <li>Stripe also sends a &ldquo;webhook&rdquo; (a server-to-server notification) confirming payment was successful</li>
+</ol>
+<p><strong>Security:</strong> Viven never stores or handles card details. All payment processing happens on Stripe&rsquo;s PCI-compliant servers.</p>
+
+<!-- SECTION 7 -->
+<h2 id="s7">7. The AI Layer</h2>
+<p>Each report includes AI-written insights powered by <strong>Claude</strong> (made by Anthropic).</p>
+<p><strong>How it works:</strong></p>
+<ul>
+  <li>The AI model used is Claude Sonnet 4.5</li>
+  <li>Each insight is limited to 300 words (concise, not waffle)</li>
+  <li>The AI is instructed to write like &ldquo;a knowledgeable friend who works in property&rdquo; &mdash; helpful and specific, not salesy</li>
+  <li>It must reference actual data points (e.g., specific prices, percentages) rather than generic filler</li>
+</ul>
+<p><strong>What it writes:</strong></p>
+<ul>
+  <li>Property overview: What the EPC data means for the buyer</li>
+  <li>Price history: Whether the property looks fairly priced versus the area</li>
+  <li>Risk assessment: Plain-English explanation of flood zones and subsidence</li>
+  <li>Area insight: Summary of crime levels, schools quality, and transport options</li>
+</ul>
+<p><strong>Fallback:</strong> If the AI service is unavailable, template-based insights are generated instead, so the report still works.</p>
+
+<!-- SECTION 8 -->
+<h2 id="s8">8. The Scoring System</h2>
+<h3>Viven Verdict (0&ndash;100)</h3>
+<p>A single score summarising the property&rsquo;s strengths and weaknesses, displayed prominently at the top of every report with coloured tags.</p>
+
+<h3>Vibe Scores (0&ndash;10 each)</h3>
+<p>Six scores reflecting the character of the neighbourhood:</p>
+<ul>
+  <li><strong>Walkability</strong> &mdash; Based on density and variety of nearby amenities</li>
+  <li><strong>Green Space</strong> &mdash; Parks, gardens, and nature reserves within walking distance</li>
+  <li><strong>Food &amp; Drink</strong> &mdash; Restaurants, cafes, pubs, and takeaways nearby</li>
+  <li><strong>Family Friendly</strong> &mdash; Schools, playgrounds, and family-oriented amenities</li>
+  <li><strong>Nightlife</strong> &mdash; Bars, clubs, and late-night venues</li>
+  <li><strong>Peace &amp; Quiet</strong> &mdash; Inverse of nightlife density, factoring in road noise indicators</li>
+</ul>
+<p>These are calculated algorithmically from OpenStreetMap amenity data &mdash; not from reviews or opinions.</p>
+
+<!-- SECTION 9 -->
+<h2 id="s9">9. Hosting and Deployment</h2>
+<ul>
+  <li><strong>Hosting</strong>: Vercel (the company behind Next.js) &mdash; handles automatic scaling, SSL certificates, and global CDN distribution</li>
+  <li><strong>Domain</strong>: Custom domain pointed at Vercel</li>
+  <li><strong>Build process</strong>: Code is pushed to GitHub, Vercel detects the change, builds the site, and deploys it &mdash; typically within 60 seconds</li>
+  <li><strong>Environment variables</strong>: API keys (EPC, Stripe, Claude, Google Places) are stored securely on Vercel, never in the code</li>
+</ul>
+
+<!-- SECTION 10 -->
+<div class="page-break"></div>
+<h2 id="s10">10. Technology Stack Summary</h2>
+<table>
+  <tr><th>Layer</th><th>Technology</th><th>Purpose</th></tr>
+  <tr><td>Framework</td><td>Next.js 16 (React 19)</td><td>Full-stack web application</td></tr>
+  <tr><td>Language</td><td>TypeScript</td><td>JavaScript with type safety</td></tr>
+  <tr><td>Styling</td><td>Tailwind CSS v4</td><td>Visual design and responsive layout</td></tr>
+  <tr><td>Charts</td><td>Recharts</td><td>Price history and crime trend visualisations</td></tr>
+  <tr><td>Maps</td><td>React Leaflet</td><td>Interactive property location maps</td></tr>
+  <tr><td>Animations</td><td>Framer Motion</td><td>Smooth page transitions and loading states</td></tr>
+  <tr><td>Icons</td><td>Lucide React</td><td>Consistent icon set across the site</td></tr>
+  <tr><td>Payments</td><td>Stripe</td><td>Secure checkout at &pound;9.99 per buyer report</td></tr>
+  <tr><td>AI Insights</td><td>Claude Sonnet 4.5 (Anthropic)</td><td>Plain-English report summaries</td></tr>
+  <tr><td>Hosting</td><td>Vercel</td><td>Automatic deployment and global CDN</td></tr>
+  <tr><td>Version Control</td><td>Git / GitHub</td><td>Code history and collaboration</td></tr>
+</table>
+
+<!-- APPENDIX A -->
+<div class="page-break"></div>
+<h2 id="appA" class="appendix-title">Appendix A: Development Timeline</h2>
+<p>The project was built iteratively over multiple sessions. Here is the commit history showing each stage:</p>
+<table>
+  <tr><th>#</th><th>What Changed</th></tr>
+  <tr><td>1</td><td><strong>Add Viven property insights platform</strong> &mdash; The initial build. Set up the Next.js project, all 15+ API integrations, the buyer and rental report pages, the scoring engine, and the basic UI.</td></tr>
+  <tr><td>2</td><td><strong>Make reports free, add address auto-fill</strong> &mdash; Temporarily removed the paywall for testing. Added the address lookup dropdown that searches Land Registry and EPC records when you enter a postcode.</td></tr>
+  <tr><td>3</td><td><strong>Fix postcode search, price history, property overview, and crime stats</strong> &mdash; First round of bug fixes after real-world testing. Postcode validation was too strict, price history wasn&rsquo;t displaying for some properties, and crime data was crashing on certain LSOA codes.</td></tr>
+  <tr><td>4</td><td><strong>Redesign buyer report with scoring engine and verdict</strong> &mdash; Major visual overhaul. Added the Viven Verdict (0&ndash;100 score), verdict pills (coloured tags), and restructured the report layout into the current section-based design. Fixed CORS issues with some APIs.</td></tr>
+  <tr><td>5</td><td><strong>Fix data accuracy, add valuation and insights</strong> &mdash; Added the HPI-based valuation model, AI-generated insights via Claude, and source attribution text below each section. Fixed issues where Land Registry data was returning RDF literal objects instead of plain strings.</td></tr>
+  <tr><td>6</td><td><strong>Fix runtime error with RDF literal objects</strong> &mdash; A targeted fix for a crash caused by Land Registry&rsquo;s linked data API returning complex objects where plain strings were expected.</td></tr>
+  <tr><td>7</td><td><strong>Add content &amp; tools expansion</strong> &mdash; Massive content addition: 7 financial calculators, 15+ buyer guides, 9 renter guides, 6 checklists, email templates, and tips pages.</td></tr>
+  <tr><td>8</td><td><strong>7 bug fixes and improvements</strong> &mdash; Second round of fixes: transport data improvements, crime chart rendering, school distance calculations.</td></tr>
+  <tr><td>9</td><td><strong>Round 3: EPC, valuation, commute, crime, disclaimer</strong> &mdash; Improved EPC display with visual rating bar, better valuation methodology breakdown, personalised commute times, enhanced crime comparison, and proper legal disclaimers.</td></tr>
+  <tr><td>10</td><td><strong>EPC clarity, projected value chart, station data, Google Places</strong> &mdash; Added projected value line to the price chart, improved train station data, added Google Places as an amenity source (with OpenStreetMap fallback), and fixed 404 errors on guide pages.</td></tr>
+  <tr><td>11</td><td><strong>8 fixes: dedup, transport, commute, tenure, units, chart, guides, DEFRA</strong> &mdash; Fixed address deduplication in the lookup dropdown, transport sorting, commute time display, tenure labels, unit formatting, chart rendering edge cases, guide routing, and DEFRA air quality API integration.</td></tr>
+  <tr><td>12</td><td><strong>13 fixes and improvements</strong> &mdash; The largest single fix round. Addressed 13 separate issues across the platform including data accuracy, display bugs, and edge cases.</td></tr>
+  <tr><td>13</td><td><strong>Add Price Analysis model and enhanced Schools section</strong> &mdash; Added a transparent comparable scoring system (scoring each comparable sale 0&ndash;100 on five factors) and an enhanced schools section with performance data (KS2, Progress 8).</td></tr>
+  <tr><td>14</td><td><strong>Schools fallback fix</strong> &mdash; Fixed the schools section not appearing because the GIAS API&rsquo;s location search wasn&rsquo;t returning results. Added a fallback that converts basic school data into the enhanced format.</td></tr>
+  <tr><td>15</td><td><strong>Remove valuation section, Value-Add Potential, fix scoring</strong> &mdash; Removed the estimated value range and &ldquo;Value-Add Potential&rdquo; sections (these weren&rsquo;t appropriate without RICS accreditation). Fixed the bedroom similarity scoring to be symmetrical. Reverted comparable sales to the simpler, proven version showing actual Land Registry data.</td></tr>
+</table>
+
+<!-- APPENDIX B -->
+<div class="page-break"></div>
+<h2 id="appB" class="appendix-title">Appendix B: Barriers Faced and Overcome</h2>
+
+<h3>B.1 &mdash; Land Registry RDF Literal Objects</h3>
+<p><strong>Problem:</strong> The Land Registry&rsquo;s Linked Data API returns data in a format called RDF (Resource Description Framework). Instead of returning a simple string like &ldquo;Terraced&rdquo;, it returns a complex object like <code>{ "_value": "Terraced", "_datatype": "string" }</code>. This caused crashes throughout the report wherever property type, tenure, or address was displayed.</p>
+<p><strong>Solution:</strong> Created a universal helper function that checks if a value is a plain string or an RDF object, and extracts the actual text either way. Applied this function to every place that reads Land Registry data.</p>
+
+<h3>B.2 &mdash; GIAS Schools API Not Returning Location-Based Results</h3>
+<p><strong>Problem:</strong> The Get Information About Schools (GIAS) API has an endpoint that theoretically accepts latitude/longitude coordinates to find nearby schools. In practice, this endpoint either doesn&rsquo;t support that query format publicly, requires authentication we don&rsquo;t have, or returns HTML instead of JSON. Result: the schools section of the report was completely blank.</p>
+<p><strong>Solution:</strong> Implemented a two-tier fallback system:</p>
+<ol>
+  <li><strong>First try:</strong> Query GIAS with lat/lng coordinates (the ideal path)</li>
+  <li><strong>If that fails:</strong> Take the basic school list already fetched from the Ofsted source and convert it into the enhanced format</li>
+</ol>
+<p>The key insight was that the basic school data (names, Ofsted ratings, distances) was already being fetched successfully through a different code path. We just needed to transform it into the richer data structure that the new Schools component expected.</p>
+<p>A related bug was in the display logic: when the GIAS API returned empty results, the code was returning an object with empty arrays instead of nothing at all. This meant the &ldquo;is there school data?&rdquo; check passed (the object existed), but there was nothing to display. Changing this to return nothing when no data is available fixed the fallback.</p>
+
+<h3>B.3 &mdash; Bedroom Similarity Scoring Was Asymmetrical</h3>
+<p><strong>Problem:</strong> The comparable sales scoring system was marking a 6-bedroom house as &ldquo;similar&rdquo; to a 3-bedroom house, while simultaneously saying a 2-bedroom house was &ldquo;not similar&rdquo; to a 3-bedroom house. This is obviously illogical &mdash; a 2-bed is much closer to a 3-bed than a 6-bed is.</p>
+<p><strong>Solution:</strong> Made the scoring explicitly symmetrical:</p>
+<ul>
+  <li>Same bedrooms: 20 points (perfect match)</li>
+  <li>&plusmn;1 bedroom: 12 points (very similar)</li>
+  <li>&plusmn;2 bedrooms: 5 points (somewhat similar)</li>
+  <li>&plusmn;3 or more: 0 points (not similar at all)</li>
+</ul>
+
+<h3>B.4 &mdash; Estimated Valuations Were Inappropriate Without RICS Accreditation</h3>
+<p><strong>Problem:</strong> The platform was generating estimated property values and displaying them prominently (e.g., &ldquo;Estimated Value: &pound;450,000 &ndash; &pound;520,000&rdquo;). While these were based on real data, displaying specific value estimates could be misleading and potentially constitutes providing valuation advice, which in the UK requires RICS accreditation.</p>
+<p><strong>Solution:</strong> Removed all estimated values, the &ldquo;Price Analysis&rdquo; section, the &ldquo;Value-Add Potential&rdquo; section, and the projected value line on the price chart. The report now shows only factual data: actual recorded sale prices, comparable transactions from the Land Registry, and HPI trends &mdash; without any Viven-generated estimate of what the property is &ldquo;worth&rdquo;.</p>
+
+<h3>B.5 &mdash; Parallel API Calls and Graceful Degradation</h3>
+<p><strong>Problem:</strong> With 15+ external APIs, any single one could be slow, down, or returning errors at any time. If the report generation waited for all APIs and crashed if any one failed, users would rarely get a complete report.</p>
+<p><strong>Solution:</strong> Every API call is wrapped in error handling and given a timeout (typically 5&ndash;10 seconds). If any source fails, the report still generates &mdash; that section simply shows &ldquo;Data unavailable&rdquo; instead of crashing the entire report. The parallel fetching means a slow API doesn&rsquo;t block the others.</p>
+
+<h3>B.6 &mdash; Address Deduplication</h3>
+<p><strong>Problem:</strong> When looking up addresses for a postcode, both the Land Registry and EPC register return results &mdash; but they format addresses differently. &ldquo;10 ACACIA AVENUE&rdquo; from Land Registry and &ldquo;10, Acacia Avenue&rdquo; from EPC would appear as two separate entries in the dropdown.</p>
+<p><strong>Solution:</strong> Addresses are normalised (stripped of punctuation, converted to uppercase, spaces standardised) before deduplication. A normalised key is generated for each address, and duplicates are merged, keeping the most complete version.</p>
+
+<h3>B.7 &mdash; Crime Data Borough Comparison</h3>
+<p><strong>Problem:</strong> Raw crime numbers are meaningless without context. &ldquo;47 crimes last month&rdquo; could be excellent for a busy city area or terrible for a quiet village.</p>
+<p><strong>Solution:</strong> Crime figures are compared against the borough average using the Police UK force-level data. The report shows whether the area is &ldquo;below average&rdquo;, &ldquo;around average&rdquo;, or &ldquo;above average&rdquo; for its borough, along with a rate per 1,000 residents calculated from ONS population estimates.</p>
+
+<!-- APPENDIX C -->
+<div class="page-break"></div>
+<h2 id="appC" class="appendix-title">Appendix C: Full Data Source Reference</h2>
+<table>
+  <tr><th>#</th><th>API Name</th><th>Base URL</th><th>Auth Required</th><th>Cache Duration</th></tr>
+  <tr><td>1</td><td>Postcodes.io</td><td>api.postcodes.io</td><td>No</td><td>24 hours</td></tr>
+  <tr><td>2</td><td>Land Registry Price Paid</td><td>landregistry.data.gov.uk/data/ppi</td><td>No</td><td>24 hours</td></tr>
+  <tr><td>3</td><td>Land Registry HPI (SPARQL)</td><td>landregistry.data.gov.uk/landregistry/query</td><td>No</td><td>Per query</td></tr>
+  <tr><td>4</td><td>EPC Open Data</td><td>epc.opendatacommunities.org/api/v1</td><td>Yes (Basic Auth)</td><td>7 days</td></tr>
+  <tr><td>5</td><td>Environment Agency Flood</td><td>environment.data.gov.uk/flood-monitoring</td><td>No</td><td>30 days</td></tr>
+  <tr><td>6</td><td>BGS Geology</td><td>map.bgs.ac.uk/arcgis/rest/services</td><td>No</td><td>1 year</td></tr>
+  <tr><td>7</td><td>DEFRA UK-AIR</td><td>uk-air.defra.gov.uk/sos-ukair/api/v1</td><td>No</td><td>24 hours</td></tr>
+  <tr><td>8</td><td>Police UK</td><td>data.police.uk/api</td><td>No</td><td>30 days</td></tr>
+  <tr><td>9</td><td>GIAS (Schools)</td><td>get-information-schools.service.gov.uk/api</td><td>No</td><td>7 days</td></tr>
+  <tr><td>10</td><td>ONS Census (Nomis)</td><td>nomisweb.co.uk/api/v01</td><td>No</td><td>1 year</td></tr>
+  <tr><td>11</td><td>IMD (ArcGIS)</td><td>services1.arcgis.com/.../IMD_2019</td><td>No</td><td>1 year</td></tr>
+  <tr><td>12</td><td>TfL Unified API</td><td>api.tfl.gov.uk</td><td>No</td><td>7 days</td></tr>
+  <tr><td>13</td><td>OSRM Routing</td><td>router.project-osrm.org</td><td>No</td><td>Per query</td></tr>
+  <tr><td>14</td><td>Overpass (OpenStreetMap)</td><td>overpass-api.de/api/interpreter</td><td>No</td><td>7 days</td></tr>
+  <tr><td>15</td><td>Ofcom Broadband</td><td>api-proxy.ofcom.org.uk</td><td>No</td><td>30 days</td></tr>
+  <tr><td>16</td><td>PlanIt Planning</td><td>planit.org.uk/api</td><td>No</td><td>24 hours</td></tr>
+  <tr><td>17</td><td>Google Places</td><td>maps.googleapis.com/maps/api/place</td><td>Yes (optional)</td><td>30 days</td></tr>
+</table>
+<div class="note">
+  <strong>Note:</strong> Only two APIs require authentication keys (EPC and Google Places). Google Places is optional &mdash; the system falls back to OpenStreetMap data if no Google key is configured. All other data sources are free, open UK government APIs.
+</div>
+
+<br><br>
+<p style="text-align:center; color:#9ca3af; font-size:10pt; border-top:1px solid #e5e7eb; padding-top:12px;">
+  <em>This report documents the Viven platform as of February 2026. The codebase is maintained in Git with full version history.</em>
+</p>
+
+</body>
+</html>
