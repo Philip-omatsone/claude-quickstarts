@@ -11,7 +11,7 @@ import { getDemographics } from "./sources/ons-census";
 import { getGeologyData } from "./sources/bgs-geology";
 import { getPlanningApplications } from "./sources/planning-api";
 import { getAirQuality } from "./sources/defra";
-import { getNearbyAmenities } from "./sources/overpass-osm";
+import { getNearbyAmenities } from "./sources/amenities";
 import { estimateValue, enrichComparableWithEPC } from "../valuation/estimate";
 import { generateAllInsights } from "../insights/generate";
 

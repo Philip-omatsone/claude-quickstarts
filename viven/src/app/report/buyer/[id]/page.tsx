@@ -351,7 +351,7 @@ export default function BuyerReportPage() {
               { label: "Built Form", value: epc?.builtForm || "N/A" },
               { label: "Last Sale", value: lastSale ? formatPrice(lastSale.price) : "N/A" },
               { label: "Sale Date", value: lastSale ? new Date(safeStr(lastSale.dateOfTransfer)).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A" },
-              { label: "EPC Score", value: epc ? `${epc.currentEnergyEfficiency}/100` : "N/A" },
+              { label: "EPC Rating", value: epc ? `${epc.currentEnergyRating} (${epc.currentEnergyEfficiency}/100)` : "N/A" },
             ].map((item) => (
               <div key={item.label} className="bg-white p-3 text-center">
                 <p className="text-xs text-muted">{item.label}</p>
@@ -389,6 +389,18 @@ export default function BuyerReportPage() {
               <p className="text-xs text-muted mt-2">
                 Current: {epc.currentEnergyRating} ({epc.currentEnergyEfficiency}) | Potential: {epc.potentialEnergyRating} ({epc.potentialEnergyEfficiency})
               </p>
+              <p className="text-xs text-gray-400 mt-2">
+                Official EPC rating from certificate{epc.inspectionDate ? ` lodged ${new Date(epc.inspectionDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}` : ""}.{" "}
+                View the full certificate at{" "}
+                <a
+                  href={`https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=${encodeURIComponent(report.postcode)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline hover:no-underline"
+                >
+                  find-energy-certificate.service.gov.uk
+                </a>
+              </p>
             </div>
           )}
 
@@ -419,7 +431,7 @@ export default function BuyerReportPage() {
         >
           {priceHistory && (
             <>
-              <PriceChart transactions={priceHistory.transactions} />
+              <PriceChart transactions={priceHistory.transactions} projectedValue={valuation?.estimatedValue} />
 
               <div className="grid sm:grid-cols-3 gap-4 mt-6">
                 <div className="bg-background rounded-xl p-4 text-center">

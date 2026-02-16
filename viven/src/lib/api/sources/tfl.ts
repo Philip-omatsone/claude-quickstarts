@@ -10,9 +10,16 @@ export async function getTransportInfo(
   preferences?: UserPreferences
 ): Promise<DataSourceResponse<TransportInfo>> {
   try {
-    // Get nearby stop points
+    // Get nearby stop points — include all rail/metro types and extend radius to 2km
+    // NaptanRailStation covers National Rail, Southern, London Overground stations (e.g. East Dulwich)
+    const stopTypes = [
+      "NaptanMetroStation",
+      "NaptanRailStation",
+      "NaptanBusCoachStation",
+      "NaptanOnstreetBusCoachStopPair",
+    ].join(",");
     const stopRes = await fetch(
-      `${BASE_URL}/StopPoint?lat=${latitude}&lon=${longitude}&stopTypes=NaptanMetroStation,NaptanRailStation,NaptanBusCoachStation&radius=1500`,
+      `${BASE_URL}/StopPoint?lat=${latitude}&lon=${longitude}&stopTypes=${stopTypes}&radius=2000`,
       { next: { revalidate: 604800 } } // Cache for 7 days
     );
 
