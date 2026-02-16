@@ -143,13 +143,18 @@ export interface CommuteResult {
 }
 
 // Transport data
+export interface NearestStation {
+  name: string;
+  type: "tube" | "rail" | "bus" | "tram";
+  distanceKm: number;
+  lines: string[];
+}
+
 export interface TransportInfo {
-  nearestStations: {
-    name: string;
-    type: "tube" | "rail" | "bus" | "tram";
-    distanceKm: number;
-    lines: string[];
-  }[];
+  nearestStations: NearestStation[];
+  trainStations: NearestStation[];
+  tubeStations: NearestStation[];
+  busStops: NearestStation[];
   commuteToCenter: {
     destination: string;
     durationMinutes: number;

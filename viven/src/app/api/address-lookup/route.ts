@@ -24,12 +24,17 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Merge and deduplicate addresses from both sources
+    // Use aggressive normalisation to catch duplicates across data sources
     const seen = new Set<string>();
     const addresses: { address: string; paon: string; street: string; town: string; source: string }[] = [];
 
+    // Normalise key: strip everything except alphanumeric, uppercase
+    const normaliseKey = (s: string) =>
+      s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
     // Add Land Registry results first (higher quality address format)
     for (const addr of landRegistryAddresses) {
-      const key = addr.address.toLowerCase().replace(/[,\s]+/g, " ").trim();
+      const key = normaliseKey(addr.address);
       if (!seen.has(key)) {
         seen.add(key);
         addresses.push({ ...addr, source: "land-registry" });
@@ -38,17 +43,17 @@ export async function GET(request: NextRequest) {
 
     // Add EPC results that aren't already covered
     for (const addr of epcAddresses) {
-      const key = addr.address.toLowerCase().replace(/[,\s]+/g, " ").trim();
-      // Check for approximate matches (house number matching)
-      const houseNum = addr.paon.match(/^\d+/)?.[0];
-      const alreadyCovered = houseNum
+      const key = normaliseKey(addr.address);
+      // Check for approximate matches (house number + street matching)
+      const houseNum = addr.paon.match(/^\d+[A-Za-z]?/)?.[0]?.toUpperCase();
+      const alreadyCovered = seen.has(key) || (houseNum
         ? addresses.some((a) => {
-            const existingNum = a.paon.match(/^\d+/)?.[0];
-            return existingNum === houseNum && a.street.toLowerCase() === addr.street.toLowerCase();
+            const existingNum = a.paon.match(/^\d+[A-Za-z]?/)?.[0]?.toUpperCase();
+            return existingNum === houseNum && normaliseKey(a.street) === normaliseKey(addr.street);
           })
-        : seen.has(key);
+        : false);
 
-      if (!alreadyCovered && !seen.has(key)) {
+      if (!alreadyCovered) {
         seen.add(key);
         addresses.push({ ...addr, source: "epc" });
       }

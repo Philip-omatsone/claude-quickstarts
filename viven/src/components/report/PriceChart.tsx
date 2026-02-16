@@ -37,16 +37,13 @@ export function PriceChart({ transactions, projectedValue }: PriceChartProps) {
     );
   }
 
-  // Add a bridge point at the last actual sale to connect the two lines
-  // Then add the projected value at today's date
+  // Connect the solid transaction line to the dashed projection line
+  // Both lines must share the exact same data point at the junction to avoid a gap
   if (projectedValue && projectedValue > 0 && data.length > 0) {
     const lastActual = data[data.length - 1];
-    // Add the bridge point: same date as last sale, with projected value to start the dashed line
-    data.push({
-      date: lastActual.date,
-      projected: lastActual.price,
-      rawDate: lastActual.rawDate,
-    });
+    // Set the projected value on the last actual data point so both lines share it
+    lastActual.projected = lastActual.price;
+    // Add the projected endpoint at today's date
     data.push({
       date: new Date().toLocaleDateString("en-GB", {
         year: "numeric",

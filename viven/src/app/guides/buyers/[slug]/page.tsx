@@ -495,6 +495,24 @@ export default function BuyerGuidePage() {
         <p className="text-muted text-lg mt-3 max-w-xl">{data.description}</p>
       </div>
 
+      {/* Coming Soon notice — these dynamic pages don't have full guide content yet */}
+      <div className="mt-8 bg-white rounded-2xl border border-amber-200 p-8 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <span className="text-3xl">🚧</span>
+          <h2 className="font-heading text-xl font-bold text-foreground">Coming Soon</h2>
+          <p className="text-muted max-w-md">
+            We&apos;re working on this comprehensive guide. In the meantime, explore
+            the related guides below or get a free property report.
+          </p>
+          <Link
+            href="/buyers"
+            className="inline-flex items-center gap-2 mt-2 bg-primary text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-dark transition-colors"
+          >
+            Get Free Property Report
+          </Link>
+        </div>
+      </div>
+
       {/* Related Guides & Tools */}
       {data.guides.length > 0 && (
         <section className="mt-10">

@@ -1,8 +1,37 @@
-import { TransportInfo, DataSourceResponse, UserPreferences } from "../types";
+import { TransportInfo, NearestStation, DataSourceResponse, UserPreferences } from "../types";
 import { calculateCommute, calculateDefaultCommutes } from "./commute";
 
 // TfL Unified API (free, London-specific)
 const BASE_URL = "https://api.tfl.gov.uk";
+
+function parseStop(stop: Record<string, unknown>): NearestStation {
+  return {
+    name: (stop.commonName as string) || "",
+    type: mapStopType(((stop.modes as string[]) || [])[0] || ""),
+    distanceKm: Math.round(((stop.distance as number) || 0) / 10) / 100,
+    lines: ((stop.lines as { name: string }[]) || []).map((l) => l.name),
+  };
+}
+
+async function fetchTfLStops(
+  latitude: number,
+  longitude: number,
+  stopType: string,
+  radius: number
+): Promise<NearestStation[]> {
+  try {
+    const res = await fetch(
+      `${BASE_URL}/StopPoint?lat=${latitude}&lon=${longitude}&stopTypes=${stopType}&radius=${radius}`,
+      { next: { revalidate: 604800 } }
+    );
+    if (!res.ok) return [];
+    const json = await res.json();
+    const stops = json.stopPoints || [];
+    return stops.map((stop: Record<string, unknown>) => parseStop(stop));
+  } catch {
+    return [];
+  }
+}
 
 export async function getTransportInfo(
   latitude: number,
@@ -10,39 +39,26 @@ export async function getTransportInfo(
   preferences?: UserPreferences
 ): Promise<DataSourceResponse<TransportInfo>> {
   try {
-    // Get nearby stop points — include all rail/metro types and extend radius to 2km
-    // NaptanRailStation covers National Rail, Southern, London Overground stations (e.g. East Dulwich)
-    const stopTypes = [
-      "NaptanMetroStation",
-      "NaptanRailStation",
-      "NaptanBusCoachStation",
-      "NaptanOnstreetBusCoachStopPair",
-    ].join(",");
-    const stopRes = await fetch(
-      `${BASE_URL}/StopPoint?lat=${latitude}&lon=${longitude}&stopTypes=${stopTypes}&radius=2000`,
-      { next: { revalidate: 604800 } } // Cache for 7 days
-    );
+    // Fetch train stations, tube/DLR stations, and bus stops separately
+    // NaptanRailStation covers National Rail, Southern, London Overground (e.g. East Dulwich)
+    // NaptanMetroStation covers Underground and DLR
+    const [railStations, tubeStations, busStops] = await Promise.all([
+      fetchTfLStops(latitude, longitude, "NaptanRailStation", 2000),
+      fetchTfLStops(latitude, longitude, "NaptanMetroStation", 2000),
+      fetchTfLStops(latitude, longitude, "NaptanPublicBusCoachTram,NaptanOnstreetBusCoachStopPair", 800),
+    ]);
 
-    if (!stopRes.ok) {
-      throw new Error(`TfL API returned ${stopRes.status}`);
-    }
+    const trainStations = railStations.slice(0, 3);
+    const tubeStationsTop = tubeStations.slice(0, 3);
+    const busStopsTop = busStops.slice(0, 3);
 
-    const stopJson = await stopRes.json();
-    const stops = stopJson.stopPoints || [];
+    // Combined list for backward compatibility (sorted by distance)
+    const nearestStations = [...railStations, ...tubeStations, ...busStops]
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, 8);
 
-    const nearestStations = stops.slice(0, 8).map(
-      (stop: Record<string, unknown>) => ({
-        name: (stop.commonName as string) || "",
-        type: mapStopType(
-          ((stop.modes as string[]) || [])[0] || ""
-        ),
-        distanceKm:
-          Math.round(((stop.distance as number) || 0) / 10) / 100,
-        lines: ((stop.lines as { name: string }[]) || []).map(
-          (l) => l.name
-        ),
-      })
-    );
+    // Use the combined stops list to check if we have any nearby stops at all
+    const stops = nearestStations;
 
     // Get journey time to central London (Bank station)
     const commuteToCenter: { destination: string; durationMinutes: number; mode: string }[] = [];
@@ -107,6 +123,9 @@ export async function getTransportInfo(
     return {
       data: {
         nearestStations,
+        trainStations,
+        tubeStations: tubeStationsTop,
+        busStops: busStopsTop,
         commuteToCenter,
         personalCommute,
         additionalCommutes,

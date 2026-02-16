@@ -3,103 +3,173 @@ import { AirQualityData, DataSourceResponse } from "../types";
 // DEFRA UK-AIR API
 const BASE_URL = "https://uk-air.defra.gov.uk/sos-ukair/api/v1";
 
+// Overpass API for nearby road/rail proximity (noise estimation)
+const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+
 export async function getAirQuality(
   latitude: number,
   longitude: number
 ): Promise<DataSourceResponse<AirQualityData>> {
+  // Try the live DEFRA API first
   try {
-    // Find nearest monitoring station
-    const stationsRes = await fetch(
-      `${BASE_URL}/stations?near=${latitude},${longitude}&limit=1`,
-      { next: { revalidate: 86400 } } // Cache for 24 hours
-    );
-
-    if (!stationsRes.ok) {
-      throw new Error(`DEFRA API returned ${stationsRes.status}`);
-    }
-
-    const stations = await stationsRes.json();
-
-    if (!Array.isArray(stations) || stations.length === 0) {
-      // Return estimated data based on location type
+    const liveData = await fetchDEFRALive(latitude, longitude);
+    if (liveData) {
       return {
-        data: {
-          index: 3,
-          band: "Low",
-          pollutants: [
-            { name: "PM2.5", value: 10, unit: "µg/m³", band: "Low" },
-            { name: "PM10", value: 18, unit: "µg/m³", band: "Low" },
-            { name: "NO2", value: 25, unit: "µg/m³", band: "Low" },
-            { name: "O3", value: 45, unit: "µg/m³", band: "Low" },
-          ],
-          nearestStation: "Estimated from nearest available data",
-        },
-        error: "Using estimated air quality data — no nearby monitoring station",
+        data: liveData,
         cached: false,
         fetchedAt: new Date().toISOString(),
       };
     }
+  } catch (error) {
+    console.warn("DEFRA live API failed, using location-based estimate:", error);
+  }
 
-    const station = stations[0];
-    const stationId = station.properties?.id || station.id;
-    const stationName =
-      station.properties?.label || station.label || "Unknown station";
-
-    // Get latest readings from this station
-    const readingsRes = await fetch(
-      `${BASE_URL}/stations/${stationId}/timeseries?limit=10`,
-      { next: { revalidate: 3600 } } // Cache for 1 hour
-    );
-
-    const pollutants: {
-      name: string;
-      value: number;
-      unit: string;
-      band: string;
-    }[] = [];
-
-    if (readingsRes.ok) {
-      const timeseries = await readingsRes.json();
-      for (const ts of Array.isArray(timeseries)
-        ? timeseries.slice(0, 5)
-        : []) {
-        const label = ts.label || ts.parameters?.phenomenon?.label || "";
-        const lastValue = ts.lastValue?.value || 0;
-        const unit = ts.uom || "µg/m³";
-
-        pollutants.push({
-          name: label,
-          value: lastValue,
-          unit,
-          band: getAirQualityBand(label, lastValue),
-        });
-      }
-    }
-
-    // Calculate overall index (1-10 scale, DEFRA DAQI)
-    const index = calculateDAQI(pollutants);
-
+  // Fallback: location-aware estimate using proximity to major roads/railways
+  try {
+    const estimatedData = await getLocationAwareAirQuality(latitude, longitude);
     return {
-      data: {
-        index,
-        band: getDAQIBand(index),
-        pollutants,
-        nearestStation: stationName,
-      },
+      data: estimatedData,
+      error: "Using estimated air quality data — DEFRA API unavailable",
       cached: false,
       fetchedAt: new Date().toISOString(),
     };
-  } catch (error) {
-    // Fallback: return estimated data rather than null
-    // This ensures the report never shows "data temporarily unavailable" for air quality
-    console.warn("DEFRA API failed, using fallback estimates:", error);
+  } catch {
+    // Final fallback: simple latitude-based estimate
     return {
       data: getEstimatedAirQuality(latitude),
-      error: `Using estimated air quality data — DEFRA API unavailable`,
+      error: "Using estimated air quality data — DEFRA API unavailable",
       cached: false,
       fetchedAt: new Date().toISOString(),
     };
   }
+}
+
+async function fetchDEFRALive(
+  latitude: number,
+  longitude: number
+): Promise<AirQualityData | null> {
+  // Find nearest monitoring station
+  const stationsRes = await fetch(
+    `${BASE_URL}/stations?near=${latitude},${longitude}&limit=1`,
+    { next: { revalidate: 86400 }, signal: AbortSignal.timeout(5000) }
+  );
+
+  if (!stationsRes.ok) {
+    throw new Error(`DEFRA API returned ${stationsRes.status}`);
+  }
+
+  const stations = await stationsRes.json();
+
+  if (!Array.isArray(stations) || stations.length === 0) {
+    return null;
+  }
+
+  const station = stations[0];
+  const stationId = station.properties?.id || station.id;
+  const stationName =
+    station.properties?.label || station.label || "Unknown station";
+
+  // Get latest readings from this station
+  const readingsRes = await fetch(
+    `${BASE_URL}/stations/${stationId}/timeseries?limit=10`,
+    { next: { revalidate: 3600 }, signal: AbortSignal.timeout(5000) }
+  );
+
+  const pollutants: {
+    name: string;
+    value: number;
+    unit: string;
+    band: string;
+  }[] = [];
+
+  if (readingsRes.ok) {
+    const timeseries = await readingsRes.json();
+    for (const ts of Array.isArray(timeseries)
+      ? timeseries.slice(0, 5)
+      : []) {
+      const label = ts.label || ts.parameters?.phenomenon?.label || "";
+      const lastValue = ts.lastValue?.value || 0;
+      const unit = ts.uom || "µg/m³";
+
+      pollutants.push({
+        name: label,
+        value: lastValue,
+        unit,
+        band: getAirQualityBand(label, lastValue),
+      });
+    }
+  }
+
+  const index = calculateDAQI(pollutants);
+
+  return {
+    index,
+    band: getDAQIBand(index),
+    pollutants,
+    nearestStation: stationName,
+  };
+}
+
+// Use Overpass API to check proximity to major roads/railways for a more
+// location-specific pollution estimate than the simple latitude heuristic
+async function getLocationAwareAirQuality(
+  latitude: number,
+  longitude: number
+): Promise<AirQualityData> {
+  // Query Overpass for major roads and railways within 200m
+  const query = `
+    [out:json][timeout:5];
+    (
+      way["highway"~"motorway|trunk|primary"](around:200,${latitude},${longitude});
+      way["railway"~"rail|light_rail"](around:200,${latitude},${longitude});
+    );
+    out count;
+  `;
+
+  let nearMajorRoad = false;
+  try {
+    const res = await fetch(OVERPASS_URL, {
+      method: "POST",
+      body: `data=${encodeURIComponent(query)}`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      const totalCount = json.elements?.[0]?.tags?.total || 0;
+      nearMajorRoad = totalCount > 0;
+    }
+  } catch {
+    // Non-critical — fall through to base estimate
+  }
+
+  // Start with the latitude-based estimate
+  const base = getEstimatedAirQuality(latitude);
+
+  if (nearMajorRoad) {
+    // Increase NO2 and PM values for properties near major roads/railways
+    base.pollutants = base.pollutants.map((p) => {
+      if (p.name === "NO2") {
+        const adjusted = Math.round(p.value * 1.4);
+        return { ...p, value: adjusted, band: getAirQualityBand("NO2", adjusted) };
+      }
+      if (p.name === "PM2.5") {
+        const adjusted = Math.round(p.value * 1.25);
+        return { ...p, value: adjusted, band: getAirQualityBand("PM2.5", adjusted) };
+      }
+      if (p.name === "PM10") {
+        const adjusted = Math.round(p.value * 1.2);
+        return { ...p, value: adjusted, band: getAirQualityBand("PM10", adjusted) };
+      }
+      return p;
+    });
+    base.index = calculateDAQI(base.pollutants);
+    base.band = getDAQIBand(base.index);
+    base.nearestStation = `Estimated (near major road/railway)`;
+  }
+
+  return base;
 }
 
 function getAirQualityBand(

@@ -157,7 +157,7 @@ function EnrichedCompRow({ comp }: { comp: EnrichedComparable }) {
       <div className="text-right shrink-0 ml-4">
         <p className="font-semibold">{formatPrice(comp.price)}</p>
         {comp.pricePerSqft && (
-          <p className="text-xs text-muted">&pound;{comp.pricePerSqft}/sqft</p>
+          <p className="text-xs text-muted">&pound;{comp.pricePerSqft.toLocaleString()}/sqft</p>
         )}
       </div>
     </div>
@@ -346,11 +346,17 @@ export default function BuyerReportPage() {
             {[
               { label: "Type", value: epc?.propertyType || (safeStr(lastSale?.propertyType) === "D" ? "Detached" : safeStr(lastSale?.propertyType) === "S" ? "Semi-Detached" : safeStr(lastSale?.propertyType) === "T" ? "Terraced" : safeStr(lastSale?.propertyType) === "F" ? "Flat" : "N/A") },
               { label: "Rooms", value: epc?.numberOfRooms ? String(epc.numberOfRooms) : "N/A" },
-              { label: "Floor Area", value: epc && epc.totalFloorArea > 0 ? `${epc.totalFloorArea} m\u00B2` : "N/A" },
-              { label: "Tenure", value: lastSale ? (safeStr(lastSale.tenure) === "F" ? "Freehold" : "Leasehold") : "N/A" },
+              { label: "Floor Area", value: epc && epc.totalFloorArea > 0 ? `${epc.totalFloorArea} m\u00B2 (${Math.round(epc.totalFloorArea * 10.764).toLocaleString()} sqft)` : "N/A" },
+              { label: "Tenure", value: (() => {
+                // Land Registry tenure (F/L) is authoritative; prefer it over EPC
+                const lrTenure = lastSale ? safeStr(lastSale.tenure) : "";
+                if (lrTenure === "F") return "Freehold";
+                if (lrTenure === "L") return "Leasehold";
+                return "N/A";
+              })() },
               { label: "Built Form", value: epc?.builtForm || "N/A" },
               { label: "Last Sale", value: lastSale ? formatPrice(lastSale.price) : "N/A" },
-              { label: "Sale Date", value: lastSale ? new Date(safeStr(lastSale.dateOfTransfer)).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A" },
+              { label: "Last Sale Date", value: lastSale ? new Date(safeStr(lastSale.dateOfTransfer)).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A" },
               { label: "EPC Rating", value: epc ? `${epc.currentEnergyRating} (${epc.currentEnergyEfficiency}/100)` : "N/A" },
             ].map((item) => (
               <div key={item.label} className="bg-white p-3 text-center">
@@ -738,8 +744,88 @@ export default function BuyerReportPage() {
                 <h3 className="text-sm font-semibold">Getting Around</h3>
               </div>
 
-              {/* Nearest stations */}
-              {transport.nearestStations.length > 0 && (
+              {/* Nearest Train Stations */}
+              {transport.trainStations && transport.trainStations.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-xs font-semibold text-muted uppercase mb-2">Nearest Train Stations</h4>
+                  <div className="space-y-2 text-sm">
+                    {transport.trainStations.slice(0, 3).map((station, i) => (
+                      <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                        <div>
+                          <p className="font-medium">{station.name}</p>
+                          <div className="flex gap-1 mt-0.5 flex-wrap">
+                            {station.lines.slice(0, 3).map((line, j) => (
+                              <span key={j} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{line}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-muted">{station.distanceKm}km</span>
+                          <p className="text-xs text-muted">{Math.round(station.distanceKm / 5 * 60)} min walk</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Nearest Underground Stations */}
+              {transport.tubeStations && transport.tubeStations.length > 0 ? (
+                <div className="mb-4">
+                  <h4 className="text-xs font-semibold text-muted uppercase mb-2">Nearest Underground</h4>
+                  <div className="space-y-2 text-sm">
+                    {transport.tubeStations.slice(0, 3).map((station, i) => (
+                      <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                        <div>
+                          <p className="font-medium">{station.name}</p>
+                          <div className="flex gap-1 mt-0.5 flex-wrap">
+                            {station.lines.slice(0, 3).map((line, j) => (
+                              <span key={j} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{line}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-muted">{station.distanceKm}km</span>
+                          <p className="text-xs text-muted">{Math.round(station.distanceKm / 5 * 60)} min walk</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : transport.trainStations && transport.trainStations.length > 0 ? (
+                <div className="mb-4">
+                  <h4 className="text-xs font-semibold text-muted uppercase mb-2">Nearest Underground</h4>
+                  <p className="text-sm text-muted">No Underground stations within 2km</p>
+                </div>
+              ) : null}
+
+              {/* Nearest Bus Stops */}
+              {transport.busStops && transport.busStops.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-xs font-semibold text-muted uppercase mb-2">Nearest Bus Stops</h4>
+                  <div className="space-y-2 text-sm">
+                    {transport.busStops.slice(0, 3).map((stop, i) => (
+                      <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                        <div>
+                          <p className="font-medium">{stop.name}</p>
+                          <div className="flex gap-1 mt-0.5 flex-wrap">
+                            {stop.lines.slice(0, 4).map((line, j) => (
+                              <span key={j} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{line}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-muted">{stop.distanceKm < 1 ? `${Math.round(stop.distanceKm * 1000)}m` : `${stop.distanceKm}km`}</span>
+                          <p className="text-xs text-muted">{Math.round(stop.distanceKm / 5 * 60)} min walk</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Fallback: show combined list if categorized data not available */}
+              {!transport.trainStations && !transport.tubeStations && transport.nearestStations.length > 0 && (
                 <>
                   <h4 className="text-xs font-semibold text-muted uppercase mb-2">Nearest Stations</h4>
                   <div className="space-y-2 text-sm">
@@ -802,22 +888,26 @@ export default function BuyerReportPage() {
               )}
 
               {/* Default/reference commute times */}
-              {transport.defaultCommutes && transport.defaultCommutes.length > 0 && (
-                <div className="mt-5">
-                  <h4 className="text-xs font-semibold text-muted uppercase mb-2">Reference Commute Times</h4>
-                  <div className="grid grid-cols-3 gap-2">
-                    {transport.defaultCommutes.map((commute, i) => (
-                      <div key={i} className="bg-background rounded-xl p-3 text-center">
-                        <p className="text-xs text-muted">{commute.destinationLabel}</p>
-                        <p className="text-lg font-heading font-bold mt-1">{commute.durationMinutes} min</p>
-                        {commute.fromStation && (
-                          <p className="text-[10px] text-gray-400 mt-0.5">from {commute.fromStation}</p>
-                        )}
-                      </div>
-                    ))}
+              {transport.defaultCommutes && transport.defaultCommutes.length > 0 && (() => {
+                // Use nearest train station name as "from" label (how people think about commuting)
+                const nearestTrainName = transport.trainStations?.[0]?.name;
+                return (
+                  <div className="mt-5">
+                    <h4 className="text-xs font-semibold text-muted uppercase mb-2">Reference Commute Times</h4>
+                    <div className="grid grid-cols-3 gap-2">
+                      {transport.defaultCommutes.map((commute, i) => (
+                        <div key={i} className="bg-background rounded-xl p-3 text-center">
+                          <p className="text-xs text-muted">{commute.destinationLabel}</p>
+                          <p className="text-lg font-heading font-bold mt-1">{commute.durationMinutes} min</p>
+                          {(nearestTrainName || commute.fromStation) && (
+                            <p className="text-[10px] text-gray-400 mt-0.5">from {nearestTrainName || commute.fromStation}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Fallback: existing commute to center */}
               {!transport.personalCommute && !transport.defaultCommutes && transport.commuteToCenter.length > 0 && (
