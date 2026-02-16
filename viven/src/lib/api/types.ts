@@ -302,6 +302,8 @@ export interface BuyerReport {
   environmental: {
     airQuality: AirQualityData | null;
   };
+  priceAnalysis?: PriceAnalysis | null;
+  schoolsData?: SchoolsResult | null;
   insights?: {
     propertyOverview?: string;
     priceHistory?: string;
@@ -345,6 +347,74 @@ export interface RentalReport {
   insights?: {
     areaOverview?: string;
   };
+}
+
+// Price Analysis types (transparent valuation model)
+export interface ComparableSale {
+  address: string;
+  price: number;
+  date: string; // ISO date
+  propertyType: string; // "D" detached, "S" semi, "T" terrace, "F" flat
+  tenure: string; // "F" freehold, "L" leasehold
+  isNewBuild: boolean;
+  floorArea?: number; // m² from EPC if available
+  bedrooms?: number; // from EPC if available
+  distance: number; // metres from subject property
+  pricePerSqft?: number; // calculated if floor area known
+}
+
+export interface ScoredComparable extends ComparableSale {
+  similarityScore: number; // 0-100
+  hpiAdjustedPrice: number; // price adjusted to today using HPI
+  hpiAdjustedPsf?: number; // £/sqft adjusted to today
+  scoreBreakdown: {
+    propertyType: number; // max 30
+    bedrooms: number; // max 20
+    floorArea: number; // max 20
+    recency: number; // max 15
+    proximity: number; // max 15
+  };
+}
+
+export interface SubjectProperty {
+  postcode: string;
+  address: string;
+  propertyType: string;
+  tenure: string;
+  floorArea?: number; // m²
+  bedrooms?: number;
+  localAuthority: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface PriceAnalysis {
+  estimatedRange: { low: number; high: number };
+  midpoint: number;
+  weightedPsf: number; // weighted £/sqft from comps
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+  confidenceReasons: string[];
+  comparables: ScoredComparable[]; // top 8, sorted by similarity
+  methodology: string;
+}
+
+// Enhanced school data with performance metrics
+export interface EnhancedSchoolInfo extends SchoolInfo {
+  religiousCharacter: string | null;
+  capacity: number | null;
+  isOversubscribed: boolean;
+  performanceSummary: string;
+  ks2Expected?: number;
+  progress8?: number;
+  attainment8?: number;
+  grade5EnglishMaths?: number;
+}
+
+export interface SchoolsResult {
+  primary: EnhancedSchoolInfo[];
+  secondary: EnhancedSchoolInfo[];
+  allThrough: EnhancedSchoolInfo[];
+  summary: string;
 }
 
 // Data source response wrapper

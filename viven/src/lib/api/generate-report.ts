@@ -1,4 +1,4 @@
-import { BuyerReport, RentalReport, GeocodeResult, UserPreferences } from "./types";
+import { BuyerReport, RentalReport, GeocodeResult, UserPreferences, SubjectProperty } from "./types";
 import { calculateVivenVerdict, calculateVibeScores } from "./scoring";
 import { getTransactionHistory } from "./sources/land-registry";
 import { getEPCRating, searchEPCByAddress } from "./sources/epc";
@@ -14,6 +14,12 @@ import { getAirQuality } from "./sources/defra";
 import { getNearbyAmenities } from "./sources/amenities";
 import { estimateValue, enrichComparableWithEPC } from "../valuation/estimate";
 import { generateAllInsights } from "../insights/generate";
+import {
+  calculatePriceAnalysis,
+  enrichCompsWithEPC,
+  transactionsToComparables,
+} from "./sources/valuation";
+import { getEnhancedSchools } from "./sources/schools";
 
 function generateId(): string {
   return `rpt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -130,6 +136,77 @@ export async function generateBuyerReport(
     };
   }
 
+  // ── New Price Analysis (transparent comparable scoring) ──
+  let priceAnalysis: BuyerReport["priceAnalysis"] = null;
+  try {
+    // Build subject property for scoring
+    const safePropertyType = (val: unknown): string => {
+      if (typeof val === "string") return val;
+      if (val && typeof val === "object" && "_value" in val)
+        return String((val as { _value: unknown })._value);
+      return "";
+    };
+
+    const subject: SubjectProperty = {
+      postcode,
+      address: address || postcode,
+      propertyType:
+        safePropertyType(lastSale?.propertyType) ||
+        (epc?.propertyType?.toLowerCase().includes("detached")
+          ? "D"
+          : epc?.propertyType?.toLowerCase().includes("semi")
+            ? "S"
+            : epc?.propertyType?.toLowerCase().includes("terrace")
+              ? "T"
+              : epc?.propertyType?.toLowerCase().includes("flat")
+                ? "F"
+                : ""),
+      tenure: safePropertyType(lastSale?.tenure) || "",
+      floorArea:
+        epc && epc.totalFloorArea > 0 ? epc.totalFloorArea : undefined,
+      bedrooms: epc && epc.numberOfRooms > 0 ? epc.numberOfRooms : undefined,
+      localAuthority: geocode.admin_district,
+      latitude,
+      longitude,
+    };
+
+    // Convert comparable transactions to ComparableSale format
+    const rawComps = transactionsToComparables(
+      priceHistory?.comparableSales || [],
+      latitude,
+      longitude
+    );
+
+    // Enrich with EPC data (floor area, bedrooms)
+    const enrichedComps = await enrichCompsWithEPC(rawComps, postcode);
+
+    // Run the price analysis
+    priceAnalysis = await calculatePriceAnalysis(
+      subject,
+      enrichedComps,
+      geocode.region
+    );
+
+    // If price analysis produced a better range, update the priceHistory too
+    if (priceAnalysis && priceAnalysis.midpoint > 0 && priceHistory) {
+      priceHistory.estimatedValueRange = {
+        low: priceAnalysis.estimatedRange.low,
+        high: priceAnalysis.estimatedRange.high,
+      };
+    }
+  } catch {
+    // Price analysis is non-critical — report still works with legacy valuation
+  }
+
+  // ── Enhanced Schools Data ──
+  let schoolsData: BuyerReport["schoolsData"] = null;
+  try {
+    const enhancedSchoolsRes = await getEnhancedSchools(latitude, longitude);
+    schoolsData = enhancedSchoolsRes.data;
+  } catch {
+    // Enhanced schools non-critical — falls back to basic school data
+  }
+
   // Calculate Viven Verdict score
   const amenities = amenitiesRes.data || [];
   const schools = schoolsRes.data || [];
@@ -216,6 +293,8 @@ export async function generateBuyerReport(
     environmental: {
       airQuality: airQualityRes.data,
     },
+    priceAnalysis,
+    schoolsData,
     insights,
   };
 

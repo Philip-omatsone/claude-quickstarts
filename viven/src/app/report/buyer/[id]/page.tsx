@@ -28,11 +28,13 @@ import {
   XCircle,
   Info,
 } from "lucide-react";
-import { BuyerReport, EnrichedComparable } from "@/lib/api/types";
+import { BuyerReport, EnrichedComparable, SubjectProperty } from "@/lib/api/types";
 import { ReportSection } from "@/components/report/ReportSection";
 import { RiskBadge } from "@/components/report/RiskBadge";
 import { PriceChart } from "@/components/report/PriceChart";
 import { CrimeCategoryChart, CrimeTrendChart } from "@/components/report/CrimeChart";
+import { PriceAnalysisSection } from "@/components/report/PriceAnalysis";
+import { SchoolsSection } from "@/components/report/Schools";
 
 // --- Helpers ---
 
@@ -223,6 +225,20 @@ export default function BuyerReportPage() {
   const insights = report.insights;
   const valuation = priceHistory?.valuation;
   const enrichedComps = priceHistory?.enrichedComparables;
+  const priceAnalysis = report.priceAnalysis;
+  const schoolsData = report.schoolsData;
+  // Build subject property for PriceAnalysis component
+  const subject: SubjectProperty | null = priceAnalysis ? {
+    postcode: report.postcode,
+    address: report.address,
+    propertyType: safeStr(lastSale?.propertyType) || epc?.propertyType || "",
+    tenure: safeStr(lastSale?.tenure) || "",
+    floorArea: epc && epc.totalFloorArea > 0 ? epc.totalFloorArea : undefined,
+    bedrooms: epc && epc.numberOfRooms > 0 ? epc.numberOfRooms : undefined,
+    localAuthority: report.geocode.admin_district,
+    latitude: report.geocode.latitude,
+    longitude: report.geocode.longitude,
+  } : null;
   // Use fastest default commute (London Bridge, etc.) for the header stat
   const fastestCommute = transport?.defaultCommutes?.[0];
   const commuteMin = fastestCommute?.durationMinutes ?? transport?.commuteToCenter?.[0]?.durationMinutes;
@@ -317,29 +333,34 @@ export default function BuyerReportPage() {
       {/* ──────── QUICK STATS ──────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <div className="bg-white rounded-xl border border-border p-4 text-center">
-          <p className="text-xs text-muted">Projected Range</p>
+          <p className="text-xs text-muted">Estimated Range</p>
           <p className="text-lg font-heading font-bold mt-1">
-            {valuation && valuation.rangeLow > 0 && valuation.rangeHigh > 0
+            {priceAnalysis && priceAnalysis.estimatedRange.low > 0 && priceAnalysis.estimatedRange.high > 0
+              ? `${formatPriceShort(priceAnalysis.estimatedRange.low)} \u2013 ${formatPriceShort(priceAnalysis.estimatedRange.high)}`
+              : valuation && valuation.rangeLow > 0 && valuation.rangeHigh > 0
               ? `${formatPriceShort(valuation.rangeLow)} \u2013 ${formatPriceShort(valuation.rangeHigh)}`
               : priceHistory && priceHistory.estimatedValueRange.high > 0
               ? `${formatPriceShort(priceHistory.estimatedValueRange.low)} \u2013 ${formatPriceShort(priceHistory.estimatedValueRange.high)}`
               : "N/A"}
           </p>
-          {valuation && (
+          {priceAnalysis && priceAnalysis.confidence && (
             <p className="text-[10px] text-muted mt-0.5">
-              {valuation.confidence === "High" ? "Based on HPI + comparables" :
-               valuation.confidence === "Medium" ? "Based on HPI only" :
-               "Limited data available"}
+              {priceAnalysis.confidence} confidence
             </p>
           )}
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
           <p className="text-xs text-muted">Per sq ft</p>
           <p className="text-lg font-heading font-bold mt-1">
-            {priceHistory && priceHistory.pricePerSqFt > 0
+            {priceAnalysis && priceAnalysis.weightedPsf > 0
+              ? `${formatPrice(priceAnalysis.weightedPsf)}`
+              : priceHistory && priceHistory.pricePerSqFt > 0
               ? `${formatPrice(priceHistory.pricePerSqFt)}`
               : "N/A"}
           </p>
+          {priceAnalysis && priceAnalysis.weightedPsf > 0 && (
+            <p className="text-[10px] text-muted mt-0.5">weighted from comps</p>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
           <p className="text-xs text-muted">EPC Rating</p>
@@ -468,11 +489,11 @@ export default function BuyerReportPage() {
           <SourceAttribution sources={["EPC Open Data API", "Land Registry Price Paid Data"]} />
         </ReportSection>
 
-        {/* ──────── 2. PRICE HISTORY & PROJECTED VALUE ──────── */}
+        {/* ──────── 2. PRICE HISTORY & MARKET POSITION ──────── */}
         <ReportSection
           icon={TrendingUp}
-          title="Price History & Projected Value"
-          subtitle="Transaction history and projected value range"
+          title="Price History & Market Position"
+          subtitle="Transaction history and price analysis"
           unavailable={!priceHistory}
         >
           {priceHistory && (
@@ -487,11 +508,13 @@ export default function BuyerReportPage() {
                   </p>
                 </div>
                 <div className="bg-background rounded-xl p-4 text-center">
-                  <p className="text-xs text-muted">Projected Value Range</p>
+                  <p className="text-xs text-muted">Estimated Value Range</p>
                   <p className="text-xl font-heading font-bold mt-1">
                     {formatPrice(priceHistory.estimatedValueRange.low)} &ndash; {formatPrice(priceHistory.estimatedValueRange.high)}
                   </p>
-                  {valuation && (
+                  {priceAnalysis && priceAnalysis.midpoint > 0 ? (
+                    <p className="text-[10px] text-muted mt-0.5">Midpoint: {formatPrice(priceAnalysis.midpoint)}</p>
+                  ) : valuation && (
                     <p className="text-[10px] text-muted mt-0.5">Midpoint: {formatPrice(valuation.estimatedValue)}</p>
                   )}
                 </div>
@@ -503,11 +526,21 @@ export default function BuyerReportPage() {
                 </div>
               </div>
 
-              {/* Projected Value — methodology always visible */}
-              {valuation && valuation.estimatedValue > 0 && (
+              {/* ── Price Analysis (new transparent model) ── */}
+              {priceAnalysis && priceAnalysis.comparables.length > 0 && subject && (
+                <div className="mt-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <h4 className="text-sm font-semibold">Price Analysis</h4>
+                  </div>
+                  <PriceAnalysisSection analysis={priceAnalysis} subject={subject} />
+                </div>
+              )}
+
+              {/* Fallback: show legacy valuation if Price Analysis not available */}
+              {(!priceAnalysis || priceAnalysis.comparables.length === 0) && valuation && valuation.estimatedValue > 0 && (
                 <div className="mt-6">
                   <div className="flex items-center gap-2 mb-3">
-                    <h4 className="text-sm font-semibold">Projected Value Range</h4>
+                    <h4 className="text-sm font-semibold">Estimated Value Range</h4>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full ${
                       valuation.confidence === "High" ? "bg-green-50 text-green-700" :
                       valuation.confidence === "Medium" ? "bg-amber-50 text-amber-700" :
@@ -548,7 +581,7 @@ export default function BuyerReportPage() {
                             {valuation.lastSalePrice
                               ? `Sold for ${formatPrice(valuation.lastSalePrice)} in ${valuation.lastSaleDate ? new Date(valuation.lastSaleDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A"}.`
                               : ""}
-                            {" "}Adjusted using Nationwide House Price Index{valuation.region ? ` for ${valuation.region}` : ""}{valuation.propertyType ? ` (${valuation.propertyType})` : ""}.
+                            {" "}Adjusted using ONS House Price Index{valuation.region ? ` for ${valuation.region}` : ""}{valuation.propertyType ? ` (${valuation.propertyType})` : ""}.
                           </p>
                         </div>
                       )}
@@ -593,22 +626,22 @@ export default function BuyerReportPage() {
                       ))}
                     </div>
                     <p className="text-[11px] text-green-600 mt-2">
-                      Estimates based on projected value of {formatPrice(valuation.estimatedValue)}. Subject to planning permission and build quality.
+                      Estimates based on estimated value of {formatPrice(valuation.estimatedValue)}. Subject to planning permission and build quality.
                     </p>
                   </div>
 
-                  {/* Caveat — always visible, prominent */}
+                  {/* Caveat — always visible */}
                   <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                     <p className="text-[13px] font-semibold text-amber-900 mb-1">
-                      This is not a property valuation.
+                      This is not a formal property valuation.
                     </p>
                     <p className="text-[12.5px] text-amber-800 leading-relaxed">
-                      This projection is based on publicly available house price index data and
+                      This estimate is based on publicly available house price index data and
                       recent comparable sales in the area. It is intended as a rough guide only
                       and should not be used for mortgage applications, investment decisions, or
-                      price negotiations. For an accurate valuation, commission a RICS-qualified
+                      price negotiations. For an accurate assessment, commission a RICS-qualified
                       surveyor. Actual market value depends on property condition, specification,
-                      and current demand — factors this projection cannot account for.
+                      and current demand — factors this estimate cannot account for.
                     </p>
                   </div>
                 </div>
@@ -768,8 +801,16 @@ export default function BuyerReportPage() {
             </div>
           )}
 
-          {/* Schools */}
-          {schools.length > 0 && (
+          {/* Schools — Enhanced version with performance data */}
+          {schoolsData && (schoolsData.primary.length > 0 || schoolsData.secondary.length > 0) ? (
+            <div className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <School className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold">Local Schools</h3>
+              </div>
+              <SchoolsSection schools={schoolsData} />
+            </div>
+          ) : schools.length > 0 && (
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-4">
                 <School className="w-4 h-4 text-primary" />
