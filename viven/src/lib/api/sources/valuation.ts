@@ -198,12 +198,13 @@ function scoreComparable(
     breakdown.propertyType = 15;
   }
 
-  // BEDROOMS (max 20)
+  // BEDROOMS (max 20) — symmetrical, based on absolute difference
   if (subject.bedrooms && comp.bedrooms) {
     const diff = Math.abs(comp.bedrooms - subject.bedrooms);
-    if (diff === 0) breakdown.bedrooms = 20;
-    else if (diff === 1) breakdown.bedrooms = 12;
-    else if (diff === 2) breakdown.bedrooms = 5;
+    if (diff === 0) breakdown.bedrooms = 20;       // exact match
+    else if (diff === 1) breakdown.bedrooms = 12;   // ±1 bedroom
+    else if (diff === 2) breakdown.bedrooms = 5;    // ±2 bedrooms
+    else breakdown.bedrooms = 0;                     // 3+ difference = not similar
   }
 
   // FLOOR AREA (max 20)

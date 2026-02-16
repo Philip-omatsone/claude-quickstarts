@@ -8,19 +8,17 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from "recharts";
 import { PropertyTransaction } from "@/lib/api/types";
 
 interface PriceChartProps {
   transactions: PropertyTransaction[];
-  projectedValue?: number;
 }
 
-export function PriceChart({ transactions, projectedValue }: PriceChartProps) {
+export function PriceChart({ transactions }: PriceChartProps) {
   const sorted = [...transactions].reverse();
 
-  const data: { date: string; price?: number; projected?: number; rawDate: number }[] = sorted.map((t) => ({
+  const data = sorted.map((t) => ({
     date: new Date(t.dateOfTransfer).toLocaleDateString("en-GB", {
       year: "numeric",
       month: "short",
@@ -35,23 +33,6 @@ export function PriceChart({ transactions, projectedValue }: PriceChartProps) {
         No transaction data available for chart
       </div>
     );
-  }
-
-  // Connect the solid transaction line to the dashed projection line
-  // Both lines must share the exact same data point at the junction to avoid a gap
-  if (projectedValue && projectedValue > 0 && data.length > 0) {
-    const lastActual = data[data.length - 1];
-    // Set the projected value on the last actual data point so both lines share it
-    lastActual.projected = lastActual.price;
-    // Add the projected endpoint at today's date
-    data.push({
-      date: new Date().toLocaleDateString("en-GB", {
-        year: "numeric",
-        month: "short",
-      }),
-      projected: projectedValue,
-      rawDate: Date.now(),
-    });
   }
 
   const formatPrice = (value: number) => {
@@ -78,9 +59,9 @@ export function PriceChart({ transactions, projectedValue }: PriceChartProps) {
               axisLine={false}
             />
             <Tooltip
-              formatter={(value: unknown, name?: string) => [
+              formatter={(value: unknown) => [
                 formatPrice(typeof value === "number" ? value : 0),
-                name === "projected" ? "Projected Value" : "Price",
+                "Price",
               ]}
               contentStyle={{
                 borderRadius: "12px",
@@ -88,7 +69,6 @@ export function PriceChart({ transactions, projectedValue }: PriceChartProps) {
                 boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
               }}
             />
-            {/* Solid line for actual transactions */}
             <Line
               type="monotone"
               dataKey="price"
@@ -99,48 +79,9 @@ export function PriceChart({ transactions, projectedValue }: PriceChartProps) {
               connectNulls={false}
               name="Recorded transactions"
             />
-            {/* Dotted line from last sale to projected value */}
-            {projectedValue && projectedValue > 0 && (
-              <Line
-                type="monotone"
-                dataKey="projected"
-                stroke="#16A34A"
-                strokeWidth={2}
-                strokeDasharray="8 4"
-                dot={{ fill: "#16A34A", r: 5, stroke: "#fff", strokeWidth: 2 }}
-                connectNulls
-                name="Projected value"
-              />
-            )}
-            {projectedValue && projectedValue > 0 && (
-              <Legend
-                verticalAlign="bottom"
-                height={36}
-                formatter={(value: string) => (
-                  <span className="text-xs text-gray-500">{value}</span>
-                )}
-              />
-            )}
           </LineChart>
         </ResponsiveContainer>
       </div>
-      {projectedValue && projectedValue > 0 && (
-        <div className="flex gap-5 justify-center mt-2 text-xs text-gray-500">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-6 h-0.5 bg-green-600" />
-            Recorded transactions
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span
-              className="inline-block w-6 h-0.5"
-              style={{
-                background: "repeating-linear-gradient(to right, #16A34A 0px, #16A34A 8px, transparent 8px, transparent 12px)",
-              }}
-            />
-            Projected value (HPI + comparables)
-          </span>
-        </div>
-      )}
     </div>
   );
 }

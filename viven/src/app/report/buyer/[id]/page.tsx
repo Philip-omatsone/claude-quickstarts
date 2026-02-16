@@ -28,12 +28,11 @@ import {
   XCircle,
   Info,
 } from "lucide-react";
-import { BuyerReport, EnrichedComparable, SubjectProperty } from "@/lib/api/types";
+import { BuyerReport, EnrichedComparable } from "@/lib/api/types";
 import { ReportSection } from "@/components/report/ReportSection";
 import { RiskBadge } from "@/components/report/RiskBadge";
 import { PriceChart } from "@/components/report/PriceChart";
 import { CrimeCategoryChart, CrimeTrendChart } from "@/components/report/CrimeChart";
-import { PriceAnalysisSection } from "@/components/report/PriceAnalysis";
 import { SchoolsSection } from "@/components/report/Schools";
 
 // --- Helpers ---
@@ -223,22 +222,8 @@ export default function BuyerReportPage() {
   const verdict = report.verdict;
   const vibeScores = report.vibeScores;
   const insights = report.insights;
-  const valuation = priceHistory?.valuation;
   const enrichedComps = priceHistory?.enrichedComparables;
-  const priceAnalysis = report.priceAnalysis;
   const schoolsData = report.schoolsData;
-  // Build subject property for PriceAnalysis component
-  const subject: SubjectProperty | null = priceAnalysis ? {
-    postcode: report.postcode,
-    address: report.address,
-    propertyType: safeStr(lastSale?.propertyType) || epc?.propertyType || "",
-    tenure: safeStr(lastSale?.tenure) || "",
-    floorArea: epc && epc.totalFloorArea > 0 ? epc.totalFloorArea : undefined,
-    bedrooms: epc && epc.numberOfRooms > 0 ? epc.numberOfRooms : undefined,
-    localAuthority: report.geocode.admin_district,
-    latitude: report.geocode.latitude,
-    longitude: report.geocode.longitude,
-  } : null;
   // Use fastest default commute (London Bridge, etc.) for the header stat
   const fastestCommute = transport?.defaultCommutes?.[0];
   const commuteMin = fastestCommute?.durationMinutes ?? transport?.commuteToCenter?.[0]?.durationMinutes;
@@ -333,34 +318,23 @@ export default function BuyerReportPage() {
       {/* ──────── QUICK STATS ──────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <div className="bg-white rounded-xl border border-border p-4 text-center">
-          <p className="text-xs text-muted">Estimated Range</p>
+          <p className="text-xs text-muted">Last Sale</p>
           <p className="text-lg font-heading font-bold mt-1">
-            {priceAnalysis && priceAnalysis.estimatedRange.low > 0 && priceAnalysis.estimatedRange.high > 0
-              ? `${formatPriceShort(priceAnalysis.estimatedRange.low)} \u2013 ${formatPriceShort(priceAnalysis.estimatedRange.high)}`
-              : valuation && valuation.rangeLow > 0 && valuation.rangeHigh > 0
-              ? `${formatPriceShort(valuation.rangeLow)} \u2013 ${formatPriceShort(valuation.rangeHigh)}`
-              : priceHistory && priceHistory.estimatedValueRange.high > 0
-              ? `${formatPriceShort(priceHistory.estimatedValueRange.low)} \u2013 ${formatPriceShort(priceHistory.estimatedValueRange.high)}`
-              : "N/A"}
+            {lastSale ? formatPriceShort(lastSale.price) : "N/A"}
           </p>
-          {priceAnalysis && priceAnalysis.confidence && (
+          {lastSale && (
             <p className="text-[10px] text-muted mt-0.5">
-              {priceAnalysis.confidence} confidence
+              {new Date(safeStr(lastSale.dateOfTransfer)).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
             </p>
           )}
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
           <p className="text-xs text-muted">Per sq ft</p>
           <p className="text-lg font-heading font-bold mt-1">
-            {priceAnalysis && priceAnalysis.weightedPsf > 0
-              ? `${formatPrice(priceAnalysis.weightedPsf)}`
-              : priceHistory && priceHistory.pricePerSqFt > 0
+            {priceHistory && priceHistory.pricePerSqFt > 0
               ? `${formatPrice(priceHistory.pricePerSqFt)}`
               : "N/A"}
           </p>
-          {priceAnalysis && priceAnalysis.weightedPsf > 0 && (
-            <p className="text-[10px] text-muted mt-0.5">weighted from comps</p>
-          )}
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
           <p className="text-xs text-muted">EPC Rating</p>
@@ -498,25 +472,14 @@ export default function BuyerReportPage() {
         >
           {priceHistory && (
             <>
-              <PriceChart transactions={priceHistory.transactions} projectedValue={valuation?.estimatedValue} />
+              <PriceChart transactions={priceHistory.transactions} />
 
-              <div className="grid sm:grid-cols-3 gap-4 mt-6">
+              <div className="grid sm:grid-cols-2 gap-4 mt-6">
                 <div className="bg-background rounded-xl p-4 text-center">
                   <p className="text-xs text-muted">Area Average</p>
                   <p className="text-xl font-heading font-bold mt-1">
                     {priceHistory.areaAverage > 0 ? formatPrice(priceHistory.areaAverage) : "N/A"}
                   </p>
-                </div>
-                <div className="bg-background rounded-xl p-4 text-center">
-                  <p className="text-xs text-muted">Estimated Value Range</p>
-                  <p className="text-xl font-heading font-bold mt-1">
-                    {formatPrice(priceHistory.estimatedValueRange.low)} &ndash; {formatPrice(priceHistory.estimatedValueRange.high)}
-                  </p>
-                  {priceAnalysis && priceAnalysis.midpoint > 0 ? (
-                    <p className="text-[10px] text-muted mt-0.5">Midpoint: {formatPrice(priceAnalysis.midpoint)}</p>
-                  ) : valuation && (
-                    <p className="text-[10px] text-muted mt-0.5">Midpoint: {formatPrice(valuation.estimatedValue)}</p>
-                  )}
                 </div>
                 <div className="bg-background rounded-xl p-4 text-center">
                   <p className="text-xs text-muted">Transactions</p>
@@ -525,127 +488,6 @@ export default function BuyerReportPage() {
                   </p>
                 </div>
               </div>
-
-              {/* ── Price Analysis (new transparent model) ── */}
-              {priceAnalysis && priceAnalysis.comparables.length > 0 && subject && (
-                <div className="mt-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <h4 className="text-sm font-semibold">Price Analysis</h4>
-                  </div>
-                  <PriceAnalysisSection analysis={priceAnalysis} subject={subject} />
-                </div>
-              )}
-
-              {/* Fallback: show legacy valuation if Price Analysis not available */}
-              {(!priceAnalysis || priceAnalysis.comparables.length === 0) && valuation && valuation.estimatedValue > 0 && (
-                <div className="mt-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <h4 className="text-sm font-semibold">Estimated Value Range</h4>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                      valuation.confidence === "High" ? "bg-green-50 text-green-700" :
-                      valuation.confidence === "Medium" ? "bg-amber-50 text-amber-700" :
-                      "bg-gray-100 text-gray-600"
-                    }`}>
-                      {valuation.confidence === "High" ? "\u25CF Based on HPI + comparables" :
-                       valuation.confidence === "Medium" ? "\u25CF Based on HPI only" :
-                       "\u25CF Limited data available"}
-                    </span>
-                  </div>
-
-                  {/* Range bar */}
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-sm font-medium text-muted">{formatPrice(valuation.rangeLow)}</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-3 relative overflow-hidden">
-                      <div className="h-full rounded-full bg-primary/30" style={{ width: "100%" }} />
-                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-3 bg-primary rounded-full" />
-                    </div>
-                    <span className="text-sm font-medium text-muted">{formatPrice(valuation.rangeHigh)}</span>
-                  </div>
-                  <p className="text-xs text-center text-muted mb-4">
-                    Midpoint: {formatPrice(valuation.estimatedValue)}
-                  </p>
-
-                  {/* Methodology breakdown */}
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <h5 className="text-[11px] uppercase tracking-wider text-gray-400 mb-3">
-                      How we calculated this
-                    </h5>
-                    <div className="space-y-3">
-                      {valuation.hpiAdjustedValue && (
-                        <div className="pb-3 border-b border-gray-100">
-                          <div className="flex justify-between items-start">
-                            <span className="text-[13px] text-gray-500">Last sale price (HPI-adjusted)</span>
-                            <span className="text-[15px] font-bold text-foreground">{formatPrice(valuation.hpiAdjustedValue)}</span>
-                          </div>
-                          <p className="text-[11px] text-gray-400 mt-1">
-                            {valuation.lastSalePrice
-                              ? `Sold for ${formatPrice(valuation.lastSalePrice)} in ${valuation.lastSaleDate ? new Date(valuation.lastSaleDate).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "N/A"}.`
-                              : ""}
-                            {" "}Adjusted using ONS House Price Index{valuation.region ? ` for ${valuation.region}` : ""}{valuation.propertyType ? ` (${valuation.propertyType})` : ""}.
-                          </p>
-                        </div>
-                      )}
-                      {valuation.compBasedValue && (
-                        <div className="pb-3 border-b border-gray-100">
-                          <div className="flex justify-between items-start">
-                            <span className="text-[13px] text-gray-500">Based on comparable sales</span>
-                            <span className="text-[15px] font-bold text-foreground">{formatPrice(valuation.compBasedValue)}</span>
-                          </div>
-                          <p className="text-[11px] text-gray-400 mt-1">
-                            {valuation.medianPsf
-                              ? `Median of \u00A3${valuation.medianPsf}/sqft from ${valuation.compCount || "multiple"} comparable sales`
-                              : "Based on recent comparable sales in the area"}
-                            {valuation.floorAreaSqft ? ` \u00D7 ${Math.round(valuation.floorAreaSqft)} sqft floor area.` : "."}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Value-Add Potential */}
-                  <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
-                    <p className="text-[13px] font-semibold text-green-900 mb-2">
-                      Value-Add Potential
-                    </p>
-                    <p className="text-[12.5px] text-green-800 leading-relaxed mb-3">
-                      Extensions, loft conversions, and renovations could materially increase
-                      this property&apos;s value. Typical uplifts based on industry data:
-                    </p>
-                    <div className="space-y-1.5">
-                      {[
-                        { label: "Loft conversion", pct: "10\u201315%", low: 0.10, high: 0.15 },
-                        { label: "Rear extension", pct: "10\u201320%", low: 0.10, high: 0.20 },
-                        { label: "Kitchen renovation", pct: "3\u20135%", low: 0.03, high: 0.05 },
-                      ].map((item) => (
-                        <div key={item.label} className="flex justify-between text-[12.5px]">
-                          <span className="text-green-700">{item.label} ({item.pct})</span>
-                          <span className="font-medium text-green-900">
-                            +{formatPrice(Math.round(valuation.estimatedValue * item.low))} &ndash; {formatPrice(Math.round(valuation.estimatedValue * item.high))}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-green-600 mt-2">
-                      Estimates based on estimated value of {formatPrice(valuation.estimatedValue)}. Subject to planning permission and build quality.
-                    </p>
-                  </div>
-
-                  {/* Caveat — always visible */}
-                  <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                    <p className="text-[13px] font-semibold text-amber-900 mb-1">
-                      This is not a formal property valuation.
-                    </p>
-                    <p className="text-[12.5px] text-amber-800 leading-relaxed">
-                      This estimate is based on publicly available house price index data and
-                      recent comparable sales in the area. It is intended as a rough guide only
-                      and should not be used for mortgage applications, investment decisions, or
-                      price negotiations. For an accurate assessment, commission a RICS-qualified
-                      surveyor. Actual market value depends on property condition, specification,
-                      and current demand — factors this estimate cannot account for.
-                    </p>
-                  </div>
-                </div>
-              )}
 
               {insights?.priceHistory ? (
                 <InsightBox text={insights.priceHistory} />
@@ -1238,11 +1080,6 @@ export default function BuyerReportPage() {
           <p>
             This report is produced by Viven for informational purposes only and does not
             constitute a property valuation, survey, environmental assessment, or legal advice.
-          </p>
-          <p>
-            Projected property values are calculated using publicly available house price
-            index data and recent comparable sales. They should not be relied upon for
-            mortgage applications, investment decisions, or negotiations.
           </p>
           <p>
             Crime statistics reflect reported incidents only. Flood risk and ground stability
