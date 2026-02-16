@@ -186,6 +186,16 @@ export function enrichComparableWithEPC(
   const txnPropertyType = safeStr(transaction.propertyType);
   const txnTenure = safeStr(transaction.tenure);
 
+  // Map tenure: prefer Land Registry value, handle both code and full name
+  let tenure = "Unknown";
+  if (txnTenure === "F" || txnTenure.toLowerCase().includes("freehold")) {
+    tenure = "Freehold";
+  } else if (txnTenure === "L" || txnTenure.toLowerCase().includes("leasehold")) {
+    tenure = "Leasehold";
+  } else if (txnTenure && txnTenure.length > 0) {
+    tenure = txnTenure; // Pass through unrecognised values
+  }
+
   return {
     address: safeStr(transaction.address),
     price,
@@ -198,7 +208,7 @@ export function enrichComparableWithEPC(
     floorAreaSqm,
     floorAreaSqft,
     pricePerSqft,
-    tenure: txnTenure === "F" ? "Freehold" : "Leasehold",
+    tenure,
     distance,
   };
 }

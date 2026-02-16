@@ -219,6 +219,7 @@ export function calculateVibeScores(
   transport: TransportInfo | null,
   crime: CrimeData | null,
   airQuality: AirQualityData | null,
+  schools?: SchoolInfo[],
 ): VibeScores {
   const parks = amenities.filter((a) => a.category === "park").length;
   const restaurants = amenities.filter((a) => a.category === "restaurant").length;
@@ -283,9 +284,14 @@ export function calculateVibeScores(
     `${restaurants} restaurants, cafes & pubs within 1km`,
   ];
 
-  // Family Friendly — crime above average should penalise the score
+  // Family Friendly — crime above average should penalise, good schools should boost
   const crimeMod = crime?.comparisonToAverage === "below" ? 3 : crime?.comparisonToAverage === "average" ? 1 : -2;
-  const familyRaw = Math.round(parks + shops + gps + crimeMod);
+  // Ofsted bonus: Outstanding +2, Good +1
+  const nearbySchools = schools || [];
+  const bestOfsted = nearbySchools.find((s) => s.ofstedRating === "Outstanding");
+  const goodSchoolCount = nearbySchools.filter((s) => s.ofstedRating === "Outstanding" || s.ofstedRating === "Good").length;
+  const schoolMod = bestOfsted ? 2 : goodSchoolCount >= 2 ? 1 : 0;
+  const familyRaw = Math.round(parks + shops + gps + crimeMod + schoolMod);
   const familyFriendly = Math.max(1, Math.min(10, familyRaw));
 
   const familyStrengths: string[] = [];
@@ -294,6 +300,8 @@ export function calculateVibeScores(
   if (gps >= 3) familyStrengths.push(`${gps} GPs`);
   if (shops >= 3) familyStrengths.push(`${shops} shops`);
   if (crime?.comparisonToAverage === "below") familyStrengths.push("low crime");
+  if (bestOfsted) familyStrengths.push("Outstanding school nearby");
+  else if (goodSchoolCount >= 2) familyStrengths.push(`${goodSchoolCount} Good/Outstanding schools`);
   if (crime?.comparisonToAverage === "above") familyWeaknesses.push("above-average crime for the area");
 
   const familyDataPoints = [

@@ -1,21 +1,43 @@
 import { GeologyData, DataSourceResponse, RiskLevel } from "../types";
 
 // British Geological Survey (BGS) GeoIndex / OpenGeoscience API
-const BGS_URL = "https://mapapps2.bgs.ac.uk/geoindex/home.html";
+
+// Clay-bearing formations that are associated with shrink-swell and subsidence risk
+const CLAY_FORMATIONS = [
+  "london clay",
+  "gault",
+  "weald clay",
+  "oxford clay",
+  "kimmeridge clay",
+  "lias clay",
+  "mercia mudstone",
+  "blue lias",
+  "fullers earth",
+  "woolwich and reading",
+];
+
+function isClayBedrock(bedrockType: string): boolean {
+  const lower = bedrockType.toLowerCase();
+  return CLAY_FORMATIONS.some((clay) => lower.includes(clay)) ||
+    lower.includes("clay") || lower.includes("mudstone");
+}
 
 export async function getGeologyData(
   latitude: number,
   longitude: number
 ): Promise<DataSourceResponse<GeologyData>> {
   try {
-    // BGS WMS/WFS services for geological data
-    const bbox = `${longitude - 0.001},${latitude - 0.001},${longitude + 0.001},${latitude + 0.001}`;
-
-    // Fetch bedrock geology
-    const bedrockRes = await fetch(
-      `https://map.bgs.ac.uk/arcgis/rest/services/BGS_Detailed_Geology/MapServer/0/query?geometry=${longitude},${latitude}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&f=json`,
-      { next: { revalidate: 31536000 } } // Cache for 1 year (geological data is static)
-    );
+    // Fetch bedrock geology and shrink-swell data in parallel
+    const [bedrockRes, shrinkRes] = await Promise.all([
+      fetch(
+        `https://map.bgs.ac.uk/arcgis/rest/services/BGS_Detailed_Geology/MapServer/0/query?geometry=${longitude},${latitude}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&f=json`,
+        { next: { revalidate: 31536000 } }
+      ),
+      fetch(
+        `https://map.bgs.ac.uk/arcgis/rest/services/GeoSure/GeoSure_Shrink_Swell/MapServer/0/query?geometry=${longitude},${latitude}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&f=json`,
+        { next: { revalidate: 31536000 } }
+      ),
+    ]);
 
     let bedrockType = "Unknown";
     let superficialType = "Unknown";
@@ -28,14 +50,12 @@ export async function getGeologyData(
           features[0].attributes?.LEX_D ||
           features[0].attributes?.DESCRIPTION ||
           "Unknown";
+        superficialType =
+          features[0].attributes?.LEX_RCS_D ||
+          features[0].attributes?.RCS_D ||
+          "Unknown";
       }
     }
-
-    // Fetch shrink-swell data
-    const shrinkRes = await fetch(
-      `https://map.bgs.ac.uk/arcgis/rest/services/GeoSure/GeoSure_Shrink_Swell/MapServer/0/query?geometry=${longitude},${latitude}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=*&f=json`,
-      { next: { revalidate: 31536000 } }
-    );
 
     let shrinkSwellClass = "Low";
     let subsidenceRisk: RiskLevel = "very_low";
@@ -50,6 +70,16 @@ export async function getGeologyData(
           "";
         shrinkSwellClass = hazard;
         subsidenceRisk = mapHazardToRisk(hazard);
+      }
+    }
+
+    // Cross-reference: if bedrock is clay-based and shrink-swell shows very low/low,
+    // upgrade the risk as the automated data may understate it
+    const isClay = isClayBedrock(bedrockType);
+    if (isClay && (subsidenceRisk === "very_low" || subsidenceRisk === "low")) {
+      subsidenceRisk = "medium";
+      if (!shrinkSwellClass || shrinkSwellClass === "Low" || shrinkSwellClass.toLowerCase() === "very low") {
+        shrinkSwellClass = "Moderate (clay geology)";
       }
     }
 

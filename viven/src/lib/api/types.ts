@@ -32,6 +32,7 @@ export interface PriceHistory {
   transactions: PropertyTransaction[];
   areaAverage: number;
   pricePerSqFt: number;
+  hpiAdjustedPricePerSqFt?: number;
   areaAveragePricePerSqFt: number;
   estimatedValueRange: { low: number; high: number };
   comparableSales: PropertyTransaction[];
@@ -407,6 +408,7 @@ export interface EnhancedSchoolInfo extends SchoolInfo {
   capacity: number | null;
   isOversubscribed: boolean;
   performanceSummary: string;
+  lastInspectionDate?: string;
   ks2Expected?: number;
   progress8?: number;
   attainment8?: number;

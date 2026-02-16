@@ -73,34 +73,35 @@ function generateSchoolsSummary(
   primary: EnhancedSchoolInfo[],
   secondary: EnhancedSchoolInfo[]
 ): string {
-  const outstandingPrimary = primary.filter(
-    (s) => s.ofstedRating === "Outstanding"
-  );
-  const goodPrimary = primary.filter((s) => s.ofstedRating === "Good");
-  const outstandingSecondary = secondary.filter(
-    (s) => s.ofstedRating === "Outstanding"
-  );
+  const parts: string[] = [];
 
-  let summary = "";
+  // Total counts
+  parts.push(`There are ${primary.length} primary and ${secondary.length} secondary schools nearby.`);
 
-  if (outstandingPrimary.length > 0) {
-    summary += `${outstandingPrimary.length} Outstanding-rated primary school${outstandingPrimary.length > 1 ? "s" : ""} within 1km. `;
-  }
-  if (goodPrimary.length > 0) {
-    summary += `${goodPrimary.length} Good-rated primary school${goodPrimary.length > 1 ? "s" : ""} nearby. `;
-  }
-  if (outstandingSecondary.length > 0) {
-    summary += `${outstandingSecondary.length} Outstanding secondary within 2km. `;
+  // Nearest outstanding school
+  const allSchools = [...primary, ...secondary].sort((a, b) => a.distanceKm - b.distanceKm);
+  const nearestOutstanding = allSchools.find((s) => s.ofstedRating === "Outstanding");
+  if (nearestOutstanding) {
+    const dist = nearestOutstanding.distanceKm < 1
+      ? `${Math.round(nearestOutstanding.distanceKm * 1000)}m`
+      : `${nearestOutstanding.distanceKm.toFixed(1)}km`;
+    parts.push(`The nearest Outstanding-rated school is ${nearestOutstanding.name} at ${dist}.`);
+  } else {
+    const nearestGood = allSchools.find((s) => s.ofstedRating === "Good");
+    if (nearestGood) {
+      const dist = nearestGood.distanceKm < 1
+        ? `${Math.round(nearestGood.distanceKm * 1000)}m`
+        : `${nearestGood.distanceKm.toFixed(1)}km`;
+      parts.push(`The nearest Good-rated school is ${nearestGood.name} at ${dist}.`);
+    }
   }
 
-  const oversubscribed = [...primary, ...secondary].filter(
-    (s) => s.isOversubscribed
-  );
+  const oversubscribed = allSchools.filter((s) => s.isOversubscribed);
   if (oversubscribed.length > 0) {
-    summary += `Note: ${oversubscribed.length} nearby school${oversubscribed.length > 1 ? "s appear" : " appears"} to be at or near capacity.`;
+    parts.push(`Note: ${oversubscribed.length} nearby school${oversubscribed.length > 1 ? "s appear" : " appears"} to be at or near capacity.`);
   }
 
-  return summary || "School data available — see details below.";
+  return parts.join(" ");
 }
 
 /**
@@ -209,6 +210,7 @@ export async function getEnhancedSchools(
             const ofstedDate =
               (s.OfstedLastInsp as string) ||
               (s.ofstedLastInsp as string) ||
+              (s.LastChangedDate as string) ||
               "";
 
             const schoolLat = s.latitude
@@ -266,6 +268,7 @@ export async function getEnhancedSchools(
                   ? pupils / capacity > 0.95
                   : false,
               performanceSummary: "", // Filled below
+              lastInspectionDate: ofstedDate || undefined,
             };
 
             school.performanceSummary = getPerformanceSummary(school);

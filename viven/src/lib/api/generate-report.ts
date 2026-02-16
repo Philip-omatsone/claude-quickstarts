@@ -147,6 +147,10 @@ export async function generateBuyerReport(
       low: valuation.rangeLow,
       high: valuation.rangeHigh,
     };
+    // Calculate HPI-adjusted price per sqft for time-fair comparison
+    if (floorAreaSqft && valuation.hpiAdjustedValue) {
+      priceHistory.hpiAdjustedPricePerSqFt = Math.round(valuation.hpiAdjustedValue / floorAreaSqft);
+    }
   }
 
   // ── Enhanced Schools Data ──
@@ -189,6 +193,7 @@ export async function generateBuyerReport(
     transportRes.data,
     crimeRes.data,
     airQualityRes.data,
+    schools,
   );
 
   // Generate AI-powered insights (non-blocking)
@@ -301,6 +306,7 @@ export async function generateRentalReport(
     transportRes.data,
     crimeRes.data,
     airQualityRes.data,
+    schoolsRes.data || [],
   );
 
   // Map the 0-10 vibe scores to 0-100 for the rental report display

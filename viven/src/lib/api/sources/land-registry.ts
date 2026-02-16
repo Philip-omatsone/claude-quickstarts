@@ -56,8 +56,17 @@ export async function getTransactionHistory(
         const pc = addr ? rdfStr(addr.postcode) : "";
 
         const propType = item.propertyType as Record<string, unknown> | undefined;
-        const estType = item.estateType as Record<string, unknown> | undefined;
+        const estType = item.estateType;
         const txnCat = item.transactionCategory as Record<string, unknown> | undefined;
+
+        // estateType can be an object with prefLabel or a URI string
+        let tenureLabel = "";
+        if (typeof estType === "string") {
+          tenureLabel = estType;
+        } else if (estType && typeof estType === "object") {
+          const estObj = estType as Record<string, unknown>;
+          tenureLabel = rdfStr(estObj.prefLabel || estObj._about || estObj._value || "");
+        }
 
         return {
           transactionId: rdfStr(item.transactionId),
@@ -67,7 +76,7 @@ export async function getTransactionHistory(
           postcode: pc || postcode,
           propertyType: mapPropertyType(rdfStr(propType?.prefLabel)),
           newBuild: Boolean(item.newBuild),
-          tenure: mapTenure(rdfStr(estType?.prefLabel)),
+          tenure: mapTenure(tenureLabel),
           category: rdfStr(txnCat?.prefLabel) || "Standard",
         };
       }
@@ -202,7 +211,16 @@ export async function getSectorTransactions(
         const town = addr ? rdfStr(addr.town) : "";
         const pc = addr ? rdfStr(addr.postcode) : "";
         const propType = item.propertyType as Record<string, unknown> | undefined;
-        const estType = item.estateType as Record<string, unknown> | undefined;
+        const estType = item.estateType;
+
+        // estateType can be an object with prefLabel or a URI string
+        let tenureLabel = "";
+        if (typeof estType === "string") {
+          tenureLabel = estType;
+        } else if (estType && typeof estType === "object") {
+          const estObj = estType as Record<string, unknown>;
+          tenureLabel = rdfStr(estObj.prefLabel || estObj._about || estObj._value || "");
+        }
 
         return {
           transactionId: rdfStr(item.transactionId),
@@ -212,7 +230,7 @@ export async function getSectorTransactions(
           postcode: pc || postcode,
           propertyType: mapPropertyType(rdfStr(propType?.prefLabel)),
           newBuild: Boolean(item.newBuild),
-          tenure: mapTenure(rdfStr(estType?.prefLabel)),
+          tenure: mapTenure(tenureLabel),
           category: "Standard",
         } as PropertyTransaction;
       })
@@ -243,5 +261,10 @@ function mapTenure(label: string): string {
     Freehold: "F",
     Leasehold: "L",
   };
-  return map[label] || label;
+  if (map[label]) return map[label];
+  // Handle URI strings from JSON-LD: "http://...#freehold" or "lrcommon:freehold"
+  const lower = label.toLowerCase();
+  if (lower.includes("freehold")) return "F";
+  if (lower.includes("leasehold")) return "L";
+  return label;
 }

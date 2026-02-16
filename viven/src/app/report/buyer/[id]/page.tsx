@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import {
   MapPin,
@@ -28,6 +28,7 @@ import {
   CheckCircle2,
   XCircle,
   Info,
+  Loader2,
 } from "lucide-react";
 import { BuyerReport, EnrichedComparable } from "@/lib/api/types";
 import { ReportSection } from "@/components/report/ReportSection";
@@ -144,20 +145,36 @@ function isRecentTransaction(dateStr: string): boolean {
   return new Date(dateStr) >= sixMonthsAgo;
 }
 
+function getTransactionAgeBadge(dateStr: string): { label: string; className: string } | null {
+  if (!dateStr) return null;
+  const txnDate = new Date(dateStr);
+  const now = new Date();
+  const monthsAgo = (now.getTime() - txnDate.getTime()) / (30.44 * 24 * 60 * 60 * 1000);
+
+  if (monthsAgo < 6) return { label: "Recent", className: "bg-green-100 text-green-700" };
+  if (monthsAgo < 12) return null;
+  if (monthsAgo < 24) {
+    const years = Math.round(monthsAgo / 12);
+    return { label: `${years}yr ago`, className: "bg-gray-100 text-gray-600" };
+  }
+  return { label: "Dated", className: "bg-amber-100 text-amber-700" };
+}
+
 function EnrichedCompRow({ comp }: { comp: EnrichedComparable }) {
   const date = safeStr(comp.date);
   const propertyType = safeStr(comp.propertyType);
   const tenure = safeStr(comp.tenure);
   const address = safeStr(comp.address);
+  const ageBadge = getTransactionAgeBadge(date);
   const recent = isRecentTransaction(date);
 
   return (
-    <div className={`flex items-center justify-between py-2.5 border-b border-border last:border-0 text-sm ${recent ? "bg-blue-50/50 -mx-2 px-2 rounded-lg" : ""}`}>
+    <div className={`flex items-center justify-between py-2.5 border-b border-border last:border-0 text-sm ${recent ? "bg-green-50/50 -mx-2 px-2 rounded-lg" : ""}`}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <p className="font-medium truncate">{address}</p>
-          {recent && (
-            <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded shrink-0">Recent</span>
+          {ageBadge && (
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${ageBadge.className}`}>{ageBadge.label}</span>
           )}
         </div>
         <div className="flex gap-2 text-xs text-muted mt-0.5 flex-wrap">
@@ -182,40 +199,56 @@ function EnrichedCompRow({ comp }: { comp: EnrichedComparable }) {
   );
 }
 
-function PricePerSqftChart({ comps, subjectPsf }: { comps: EnrichedComparable[]; subjectPsf: number | null }) {
+function PricePerSqftChart({ comps, subjectPsf, adjustedPsf }: {
+  comps: EnrichedComparable[];
+  subjectPsf: number | null;
+  adjustedPsf?: number | null;
+}) {
   const withPsf = comps.filter((c) => c.pricePerSqft && c.pricePerSqft > 0);
   if (withPsf.length < 2) return null;
 
+  // Use adjusted psf if available, otherwise raw psf
+  const displayPsf = adjustedPsf && adjustedPsf > 0 ? adjustedPsf : subjectPsf;
   const allValues = withPsf.map((c) => c.pricePerSqft!);
-  if (subjectPsf && subjectPsf > 0) allValues.push(subjectPsf);
+  if (displayPsf && displayPsf > 0) allValues.push(displayPsf);
   const maxVal = Math.max(...allValues);
 
   return (
     <div className="mt-4">
       <h4 className="text-xs font-semibold text-muted uppercase mb-3">Price per sq ft comparison</h4>
       <div className="space-y-1.5">
-        {subjectPsf && subjectPsf > 0 && (
+        {displayPsf && displayPsf > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-primary font-semibold w-28 text-right shrink-0 truncate">This property</span>
+            <span className="text-xs text-primary font-semibold w-28 text-right shrink-0 truncate">
+              This property{adjustedPsf && adjustedPsf > 0 ? " (adj.)" : ""}
+            </span>
             <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${(subjectPsf / maxVal) * 100}%` }} />
+              <div className="h-full rounded-full bg-primary" style={{ width: `${(displayPsf / maxVal) * 100}%` }} />
             </div>
-            <span className="text-xs font-bold text-primary w-20 text-right shrink-0">&pound;{subjectPsf.toLocaleString()}/sqft</span>
+            <span className="text-xs font-bold text-primary w-20 text-right shrink-0">&pound;{displayPsf.toLocaleString()}/sqft</span>
           </div>
         )}
-        {withPsf.slice(0, 6).map((comp, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-xs text-muted w-28 text-right shrink-0 truncate">{safeStr(comp.address).split(",")[0]}</span>
-            <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
-              <div
-                className={`h-full rounded-full ${isRecentTransaction(safeStr(comp.date)) ? "bg-blue-400" : "bg-gray-400"}`}
-                style={{ width: `${(comp.pricePerSqft! / maxVal) * 100}%` }}
-              />
+        {withPsf.slice(0, 6).map((comp, i) => {
+          const ageBadge = getTransactionAgeBadge(safeStr(comp.date));
+          return (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-xs text-muted w-28 text-right shrink-0 truncate">{safeStr(comp.address).split(",")[0]}</span>
+              <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${isRecentTransaction(safeStr(comp.date)) ? "bg-green-400" : ageBadge?.label === "Dated" ? "bg-amber-300" : "bg-gray-400"}`}
+                  style={{ width: `${(comp.pricePerSqft! / maxVal) * 100}%` }}
+                />
+              </div>
+              <span className="text-xs font-medium text-muted w-20 text-right shrink-0">&pound;{comp.pricePerSqft!.toLocaleString()}/sqft</span>
             </div>
-            <span className="text-xs font-medium text-muted w-20 text-right shrink-0">&pound;{comp.pricePerSqft!.toLocaleString()}/sqft</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
+      {adjustedPsf && adjustedPsf > 0 && subjectPsf && subjectPsf > 0 && adjustedPsf !== subjectPsf && (
+        <p className="text-[11px] text-muted mt-2 italic">
+          &ldquo;This property (adj.)&rdquo; reflects the HPI-adjusted £/sqft — the original {formatPrice(subjectPsf)}/sqft at last sale, adjusted for regional house price growth to today&apos;s equivalent.
+        </p>
+      )}
     </div>
   );
 }
@@ -225,6 +258,96 @@ export default function BuyerReportPage() {
   const { id } = useParams();
   const [report, setReport] = useState<BuyerReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  const generatePdf = useCallback(async () => {
+    if (!report || generatingPdf) return;
+    setGeneratingPdf(true);
+    try {
+      const html2canvas = (await import("html2canvas-pro")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const reportEl = document.getElementById("viven-report");
+      if (!reportEl) return;
+
+      // Hide print-only elements
+      const hideEls = reportEl.querySelectorAll("[data-print-hide]");
+      hideEls.forEach((el) => (el as HTMLElement).style.display = "none");
+
+      const canvas = await html2canvas(reportEl, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#FAFAF5",
+      });
+
+      hideEls.forEach((el) => (el as HTMLElement).style.display = "");
+
+      const imgWidth = 210; // A4 width mm
+      const pageHeight = 297; // A4 height mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pdf = new jsPDF("p", "mm", "a4");
+
+      // Cover page
+      pdf.setFillColor(34, 87, 64); // Viven green
+      pdf.rect(0, 0, 210, 297, "F");
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(32);
+      pdf.text("Viven", 105, 100, { align: "center" });
+      pdf.setFontSize(14);
+      pdf.text("Buyer Report", 105, 115, { align: "center" });
+      pdf.setFontSize(18);
+      pdf.text(report.address, 105, 145, { align: "center", maxWidth: 160 });
+      pdf.setFontSize(11);
+      pdf.text(
+        `Generated ${new Date(report.generatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`,
+        105, 165, { align: "center" }
+      );
+      if (report.verdict) {
+        pdf.setFontSize(48);
+        pdf.text(`${report.verdict.score}`, 105, 210, { align: "center" });
+        pdf.setFontSize(12);
+        pdf.text("/100 Viven Verdict", 105, 222, { align: "center" });
+      }
+      pdf.setFontSize(9);
+      pdf.setTextColor(200, 200, 200);
+      pdf.text("Generated by Viven | viven.co.uk", 105, 280, { align: "center" });
+
+      // Content pages
+      let heightLeft = imgHeight;
+      let position = 0;
+      const pageMargin = 8;
+      const contentHeight = pageHeight - pageMargin * 2 - 10; // Leave room for footer
+
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
+      let pageNum = 2;
+
+      while (heightLeft > 0) {
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, pageMargin - position, imgWidth, imgHeight);
+
+        // Footer on each page
+        pdf.setFontSize(8);
+        pdf.setTextColor(150, 150, 150);
+        pdf.text(`Page ${pageNum}`, 105, 290, { align: "center" });
+        pdf.text("Generated by Viven | viven.co.uk", 105, 294, { align: "center" });
+
+        heightLeft -= contentHeight;
+        position += contentHeight;
+        pageNum++;
+      }
+
+      // Save
+      const cleanAddress = report.address.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 50);
+      pdf.save(`Viven_Report_${cleanAddress}.pdf`);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      // Fallback to window.print()
+      window.print();
+    } finally {
+      setGeneratingPdf(false);
+    }
+  }, [report, generatingPdf]);
 
   useEffect(() => {
     const stored = sessionStorage.getItem(`report_${id}`);
@@ -281,7 +404,7 @@ export default function BuyerReportPage() {
   const commuteLabel = fastestCommute?.destinationLabel;
 
   return (
-    <div className="page-transition max-w-4xl mx-auto px-4 pt-8 pb-16">
+    <div id="viven-report" className="page-transition max-w-4xl mx-auto px-4 pt-8 pb-16">
       {/* ──────── HEADER ──────── */}
       <div className="bg-primary rounded-2xl p-6 md:p-8 text-white mb-6">
         <div className="flex items-start justify-between">
@@ -315,11 +438,14 @@ export default function BuyerReportPage() {
               <Share2 className="w-5 h-5" />
             </button>
             <button
-              onClick={() => window.print()}
-              className="bg-white/20 hover:bg-white/30 p-2.5 rounded-xl transition-colors"
+              onClick={generatePdf}
+              disabled={generatingPdf}
+              className="bg-white/20 hover:bg-white/30 p-2.5 rounded-xl transition-colors disabled:opacity-50"
               title="Download as PDF"
             >
-              <Download className="w-5 h-5" />
+              {generatingPdf
+                ? <Loader2 className="w-5 h-5 animate-spin" />
+                : <Download className="w-5 h-5" />}
             </button>
           </div>
         </div>
@@ -397,12 +523,21 @@ export default function BuyerReportPage() {
           )}
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
-          <p className="text-xs text-muted">Per sq ft</p>
-          <p className="text-lg font-heading font-bold mt-1">
-            {priceHistory && priceHistory.pricePerSqFt > 0
-              ? `${formatPrice(priceHistory.pricePerSqFt)}`
-              : "N/A"}
+          <p className="text-xs text-muted">
+            {priceHistory?.hpiAdjustedPricePerSqFt ? "Per sq ft (adj.)" : "Per sq ft"}
           </p>
+          <p className="text-lg font-heading font-bold mt-1">
+            {priceHistory?.hpiAdjustedPricePerSqFt
+              ? formatPrice(priceHistory.hpiAdjustedPricePerSqFt)
+              : priceHistory && priceHistory.pricePerSqFt > 0
+                ? formatPrice(priceHistory.pricePerSqFt)
+                : "N/A"}
+          </p>
+          {priceHistory?.hpiAdjustedPricePerSqFt && priceHistory.pricePerSqFt > 0 && lastSale && (
+            <p className="text-[10px] text-muted mt-0.5">
+              {formatPrice(priceHistory.pricePerSqFt)} in {new Date(safeStr(lastSale.dateOfTransfer)).getFullYear()}
+            </p>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-border p-4 text-center">
           <p className="text-xs text-muted">EPC Rating</p>
@@ -587,17 +722,24 @@ export default function BuyerReportPage() {
 
               {insights?.priceHistory ? (
                 <InsightBox text={insights.priceHistory} />
-              ) : priceHistory.pricePerSqFt > 0 && priceHistory.areaAverage > 0 && epc && epc.totalFloorArea > 0 && (
-                <InsightBox
-                  text={`At ${formatPrice(priceHistory.pricePerSqFt)}/sq ft, this property ${
-                    priceHistory.pricePerSqFt > Math.round(priceHistory.areaAverage / (epc.totalFloorArea * 10.764))
-                      ? "sits above"
-                      : "sits below"
-                  } the area average. The ${epc.totalFloorArea} m\u00B2 floor area is ${
-                    epc.totalFloorArea > 80 ? "above" : epc.totalFloorArea > 60 ? "around" : "below"
-                  } average for the postcode.`}
-                />
-              )}
+              ) : priceHistory.pricePerSqFt > 0 && epc && epc.totalFloorArea > 0 && lastSale && (() => {
+                const saleYear = new Date(safeStr(lastSale.dateOfTransfer)).getFullYear();
+                const rawPsf = priceHistory.pricePerSqFt;
+                const adjPsf = priceHistory.hpiAdjustedPricePerSqFt;
+                const allComps = [...(enrichedComps?.street || []), ...(enrichedComps?.sector || [])].filter(c => c.pricePerSqft && c.pricePerSqft > 0);
+                const compPsfValues = allComps.map(c => c.pricePerSqft!);
+                const minCompPsf = compPsfValues.length > 0 ? Math.min(...compPsfValues) : null;
+                const maxCompPsf = compPsfValues.length > 0 ? Math.max(...compPsfValues) : null;
+
+                let text = `The subject property last sold in ${saleYear} at ${formatPrice(rawPsf)}/sqft.`;
+                if (adjPsf && adjPsf !== rawPsf) {
+                  text += ` Adjusted for regional house price growth, this is approximately equivalent to ${formatPrice(adjPsf)}/sqft in today's terms.`;
+                }
+                if (minCompPsf && maxCompPsf) {
+                  text += ` Recent comparable sales nearby range from ${formatPrice(minCompPsf)}-${formatPrice(maxCompPsf)}/sqft.`;
+                }
+                return <InsightBox text={text} />;
+              })()}
 
               {/* Enriched Comparable Sales */}
               {enrichedComps && enrichedComps.street.length > 0 ? (
@@ -615,6 +757,7 @@ export default function BuyerReportPage() {
                   <PricePerSqftChart
                     comps={[...enrichedComps.street, ...(enrichedComps.sector || [])]}
                     subjectPsf={priceHistory.pricePerSqFt > 0 ? priceHistory.pricePerSqFt : null}
+                    adjustedPsf={priceHistory.hpiAdjustedPricePerSqFt || null}
                   />
                 </div>
               ) : priceHistory.comparableSales.length > 0 && (
@@ -690,6 +833,14 @@ export default function BuyerReportPage() {
                   <div className="flex justify-between items-center"><span className="text-muted">Shrink-Swell</span><span className="font-medium">{geology.shrinkSwellClass}</span></div>
                   <div className="flex justify-between items-center"><span className="text-muted">Radon</span><span className="font-medium">{geology.radonLevel}</span></div>
                   <div className="flex justify-between items-center"><span className="text-muted">Bedrock</span><span className="font-medium text-xs">{geology.bedrockType}</span></div>
+                  {geology.bedrockType.toLowerCase().includes("clay") && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mt-2">
+                      <p className="text-xs text-amber-800">
+                        This area sits on {geology.bedrockType} which is associated with ground movement.
+                        We recommend a full structural survey before purchase.
+                      </p>
+                    </div>
+                  )}
                   <p className="text-[11px] text-gray-400 pt-1">Source: BGS GeoSure, UKHSA Radon Atlas</p>
                 </div>
               ) : <p className="text-sm text-muted">Data unavailable</p>}
@@ -1190,61 +1341,80 @@ export default function BuyerReportPage() {
         </ReportSection>
       </div>
 
-      {/* ──────── RECOMMENDED READING ──────── */}
+      {/* ──────── USEFUL LINKS ──────── */}
       {(() => {
-        const guides: { title: string; href: string; reason: string }[] = [];
-        // Leasehold property
-        const lrTenure = lastSale ? safeStr(lastSale.tenure) : "";
-        if (lrTenure === "L") {
-          guides.push({
-            title: "Understanding Leasehold",
-            href: "/buyers/guides/leasehold-vs-freehold",
-            reason: "This property is leasehold",
+        const links: { title: string; href: string; reason: string }[] = [];
+
+        // Crime: Police UK local area page
+        if (crime?.comparisonToAverage === "above" && crime.boroughName) {
+          const areaSlug = (report.geocode.admin_ward || "").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+          const forceSlug = "metropolitan-police";
+          links.push({
+            title: "Police UK — Local Crime Map",
+            href: `https://www.police.uk/pu/your-area/${forceSlug}/${areaSlug}/`,
+            reason: `View detailed crime data for ${crime.boroughName}`,
           });
         }
-        // Poor EPC rating
-        if (epc && ["E", "F", "G"].includes(epc.currentEnergyRating)) {
-          guides.push({
-            title: "Energy Efficiency Guide",
-            href: "/buyers/guides/buildings-insurance",
-            reason: `This property has an EPC rating of ${epc.currentEnergyRating}`,
-          });
-        }
-        // Above-average crime
-        if (crime?.comparisonToAverage === "above") {
-          guides.push({
-            title: "Understanding Crime Statistics",
-            href: "/buyers/guides/buying-in-london",
-            reason: `Crime is above average for ${crime.boroughName || "the borough"}`,
-          });
-        }
-        // Flood risk present
+
+        // Flood risk: Environment Agency long-term flood risk checker
         if (flood && (flood.floodZone !== "1" || flood.riverAndSea === "medium" || flood.riverAndSea === "high" || flood.surfaceWater === "medium" || flood.surfaceWater === "high")) {
-          guides.push({
-            title: "Flood Zone Guide",
-            href: "/buyers/guides/surveys",
+          links.push({
+            title: "Check Long-Term Flood Risk",
+            href: `https://check-long-term-flood-risk.service.gov.uk/postcode?postcode=${encodeURIComponent(report.postcode)}`,
             reason: `This property is in Flood Zone ${flood.floodZone}`,
           });
         }
-        if (guides.length === 0) return null;
+
+        // EPC: Direct certificate link
+        if (epc) {
+          links.push({
+            title: "View Full EPC Certificate",
+            href: epc.lmkKey
+              ? `https://find-energy-certificate.service.gov.uk/energy-certificate/${epc.lmkKey}`
+              : `https://find-energy-certificate.service.gov.uk/find-a-certificate/search-by-postcode?postcode=${encodeURIComponent(report.postcode)}`,
+            reason: `Current rating: ${epc.currentEnergyRating} (${epc.currentEnergyEfficiency}/100)`,
+          });
+        }
+
+        // Schools: DfE performance tables
+        if (schools.length > 0 || (schoolsData && (schoolsData.primary.length > 0 || schoolsData.secondary.length > 0))) {
+          links.push({
+            title: "Compare School Performance",
+            href: `https://www.compare-school-performance.service.gov.uk/schools-by-type?step=default&table=schools&region=all-england&for=ofsted&basedon=Overall+effectiveness&postcode=${encodeURIComponent(report.postcode)}`,
+            reason: "Search schools near this property on the DfE website",
+          });
+        }
+
+        // Transport: TfL Journey Planner
+        if (transport) {
+          links.push({
+            title: "TfL Journey Planner",
+            href: `https://tfl.gov.uk/plan-a-journey/?from=${encodeURIComponent(report.postcode)}`,
+            reason: "Plan a journey from this property",
+          });
+        }
+
+        if (links.length === 0) return null;
         return (
           <div className="mt-8 bg-white rounded-2xl border border-border p-6">
             <div className="flex items-center gap-2 mb-4">
               <FileText className="w-5 h-5 text-primary" />
-              <h2 className="font-heading text-lg font-bold">Recommended Reading</h2>
+              <h2 className="font-heading text-lg font-bold">Useful Links</h2>
             </div>
             <div className="space-y-3">
-              {guides.map((guide, i) => (
+              {links.map((link, i) => (
                 <a
                   key={i}
-                  href={guide.href}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex items-center justify-between p-3 bg-background rounded-xl hover:bg-gray-100 transition-colors group"
                 >
                   <div>
                     <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                      {guide.title}
+                      {link.title}
                     </p>
-                    <p className="text-xs text-muted mt-0.5">{guide.reason}</p>
+                    <p className="text-xs text-muted mt-0.5">{link.reason}</p>
                   </div>
                   <span className="text-primary text-sm shrink-0 ml-3">&rarr;</span>
                 </a>
